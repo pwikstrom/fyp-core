@@ -52,45 +52,6 @@ def deduplicate_metadata(metadata_fn, video_df, dedup_field='video_id'):
     return combined_data.drop_duplicates(dedup_field)
 
 
-"""pyk_data_structure = {
-    'desc': str,
-    'createTime': datetime,
-    'challenges': str,
-    'item_id': int,
-    'video_duration': int,
-    'author_id': int,
-    'author_uniqueId': str,
-    'author_nickname': str,
-    'author_signature': str,
-    'author_verified': bool,
-    'music_id': int,
-    'music_title': str,
-    'music_authorName': str,
-    'music_original': bool,
-    'music_duration': int,
-    'stats_diggCount': int,
-    'stats_commentCount': int,
-    'stats_playCount': int,
-    'stats_collectCount': int,
-    'anchors': str,
-    'poi_name': str,
-    'poi_address': str,
-    'poi_city': str,
-    'IsAigc': bool,
-    'AIGCDescription': str,
-    'video_cover': str,
-    'poi_province': str,
-    'poi_country': str,
-    'stats_shareCount': int,
-    'playlistId': int,
-    'isAd': bool,
-    'music_album': str,
-    'aigcLabelType': int,
-    'video_downloaded': bool,
-    'audio_extracted': bool,
-    'cover_downloaded': bool,
-    'last_modified': datetime
-}"""
 
 pyk_data_defaults = {
     'desc': "",
