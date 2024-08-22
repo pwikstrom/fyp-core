@@ -12,14 +12,10 @@ compile("get_baseline_log.py")
 from get_baseline_log import get_baseline_log
 compile("download_videos.py")
 from download_videos import download_videos
-#compile("extract_audio.py")
-#from extract_audio import extract_audio
 compile("transcribe_audio.py")
 from transcribe_audio import transcribe_audio
 compile("analyze_videos.py")
 from analyze_videos import analyze_videos
-#compile("organize_results.py")
-#from organize_results import organize_results
 
 
 def get_baseline_w_script():
