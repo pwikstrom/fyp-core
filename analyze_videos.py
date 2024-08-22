@@ -43,8 +43,8 @@ def analyze_videos(some_videos_to_analyze=None,
 
     cf = toml.load(fyp.CONFIG_PATH)
 
-    drop_previous_results_with_na = cf["gemini"]["drop_previous_results_with_na"]
-    required_cols = cf["gemini"]["required_cols"]
+    #drop_previous_results_with_na = cf["gemini"]["drop_previous_results_with_na"]
+    #required_cols = cf["gemini"]["required_cols"]
     gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["gemini_video_analysis_fn"])
     pyk_metadata_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["pyk_metadata_fn"])
 
@@ -144,7 +144,7 @@ def analyze_videos(some_videos_to_analyze=None,
         print("Exiting.\n"+"*"*80+"\n")
         return
     
-    some_results_df = some_results_df.dropna(subset=required_cols)
+    some_results_df = some_results_df.dropna()#subset=required_cols)
 
     print(f"Shape of the new results dataframe: {some_results_df.shape}. Shape of the good old dataframe: {all_results_df.shape}\n")
 
