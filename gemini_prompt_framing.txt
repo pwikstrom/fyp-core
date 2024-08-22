@@ -1,0 +1,44 @@
+Analyze this video and generate a JSON object with the following data:
+{
+  "music_present": <bool>,
+  "humans_talking": <bool>,
+  "main_activity": <string>,
+  "probable_location": <string>,
+  "human_count": <int>,
+  "guessed_genders": <string>,
+  "estimated_age_of_humans_observed": <string>,
+  "guessed_ethnicities_of_humans": <string>,
+  "emotions": <string>,
+  "seems_political": <string>,
+  "sensitive_topic": <string>,
+  "communicative_function": <string>,
+  "symbols_or_brands_observed": <string>,
+  "flags_observed": <string>,
+  "audio_language": <string>,
+  "video_story": <string>,
+  "text_visible_in_video": <string>,
+  "list_of_objects_in_video": <string>,
+  "type_of_story" <string>,
+  "framing_analysis" <string>
+}
+Instructions:
+music_present: Is music playing? (true/false)
+humans_talking: Are humans talking (not singing or lipsyncing)? (true/false)
+main_activity: Describe the main activity using a verb and object (e.g., "playing piano", "dancing", "eating").
+probable_location: Identify the location or type of location (e.g., "park," "office," "indoor," "outdoor"). Be as specific as possible.
+human_count: Number of humans participating in the video. If no humans are present, return 0.
+guessed_genders: List the likely genders of the humans present separated by commas (e.g., "Male, Female, Male"). If no humans are present, return "-".
+estimated_age_of_humans_observed: Estimate the age range of the humans observed (e.g., "20-30", "Children", "Elderly"). If no humans are present, return "-".
+guessed_ethnicities_of_humans: List the likely ethnicities of the participating humans separated by commas (e.g., "White, East Asian, South Asian, Pacific Islander, Indigenous Australian, Middle Eastern, Black, Latin American"). If no humans are present, return "-".
+emotions: Describe the emotions expressed by the humans (e.g., "happy, excited", "sad, angry"). If no humans are present, return "-".
+seems_political: Indicate "Yes" or "No" and provide a very brief justification (e.g., "Yes, discusses political candidates").
+sensitive_topic: Indicate "Yes" or "No" and provide a very brief justification (e.g., "Yes, depicts violence").
+communicative_function: Identify the primary communicative function of the video and provide a very brief justification (e.g., "Informative", "Persuasive", "Entertaining", "Humorous", "Emotive", "Provocative", "Relational", "Reflective").
+symbols_or_brands_observed: List any visible symbols or brands in the video separated by commas (e.g., "Nike logo, McDonald's arches"). If none, return "-".
+flags_observed: List any visible flags separated by commas. If no flags are visible, return "-".
+audio_language: List the spoken or sung languages observed separated by commas. If none, return "-".
+text_visible_in_video: List any visible text in the video. If none, return "-".
+list_of_objects_in_video: List the primary objects visible in the video separated by commas (e.g., "car, tree, building").
+video_story: Provide a concise description of the narrative or events unfolding in the video.
+type_of_story: Classify the story as one of the following four types and provide a very brief justification: (1) Issue-Based - The video deals with a social, political, or economic issue that has clear implications for society and involves conflict, responsibility, or moral considerations. (2) Event-Based - The video reports on a specific event that may or may not involve broader social implications, with a focus on the facts of the event itself. (3) Human-Interest - The video focuses on individuals, personal experiences, or lighter topics, intended to entertain, evoke emotion, or provide a feel-good story. (4) Descriptive - The video is purely descriptive, lacking a narrative arc, conflict, or social relevance, and is focused on simple observations without deeper implications.
+framing_analysis: Indicate "video not suitable for framing analysis" if the story is human-interest or descriptive. Otherwise, use framing theory to analyse the five framing elements "(What) Problem Definition", "(Who) Attribution of responsibility", "(Why) Moral evaluation", "(How) Treatment recommendation", "(Consequences) Future outcomes".
