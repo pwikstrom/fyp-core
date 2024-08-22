@@ -1,0 +1,40 @@
+[gemini]
+key = "" # Your Gemini API Key goes here
+model = "gemini-1.5-flash"
+timeout = 20
+temperature = 0.1
+top_p = 0.95
+top_k = 64
+max_output_tokens = 16384
+doublecheck_these_cols = ["video_story", "text_visible_in_video", "list_of_objects_in_video"]
+
+[openai]
+key = "" # Your OPenAI API Key goes here
+max_audio_files_to_transcribe = 5000000
+model = "whisper-1"
+
+[input_paths]
+ddp_path = "" # Path to TikTok DDP files - leave blank if working with Zeeschuimer
+zeeschuimer_path = "" # Path to Zeeschuimer files - leave blank if working with TikTOk DDPs
+fine_logs_path = "" 
+
+[result_paths]
+main_data_dir = "" # Main path for your metadata and analysis results (temp and backup dirs end up here as well)
+baseline_results_fn = "baseline.csv"
+ddp_results_fn = "ddp_results.csv"
+pyk_metadata_fn = "pyk_metadata.pkl"
+pyk_failed_items_fn = "pyk_failed_items.json"
+gemini_video_analysis_fn = "gemini_video_analysis.pkl"
+audio_transcriptions_fn = "audio_transcriptions.json"
+all_metadata_wo_analysis_fn = "all_metadata_wo_analysis.csv"
+all_static_metadata_fn = "all_static_metadata.csv"
+website_metadata_fn = "website_metadata.csv"
+
+[misc]
+label = "no_label"
+
+[video_storage]
+GCP_bucket = "" # The name of your GCP bucket for storage of video audio files
+prefix = "" # If your files should be organised in the bucket with a prefix
+audio_sub_prefix = "extracted_audio" # prefix for audio extracted from the video files
+video_cover_prefix = "video_covers"
