@@ -10,8 +10,7 @@ max_output_tokens = 16384
 doublecheck_these_cols = ["video_story", "text_visible_in_video", "list_of_objects_in_video"]
 
 [openai]
-key = "" # Your OPenAI API Key goes here
-max_audio_files_to_transcribe = 5000000 # this is not used anymore
+key = "" # Your OpenAI API Key goes here
 model = "whisper-1"
 
 [activity_paths]
