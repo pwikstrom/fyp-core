@@ -6,7 +6,8 @@ Author: Patrik
 Date: 
 """
 
-CONFIG_PATH = "config.toml"
+CONFIG_PATH = "/Users/wikstrop/Library/CloudStorage/GoogleDrive-patrikwikstrom@gmail.com/My Drive/my projects/FYP_mine/patrik_secrets/config.toml"
+#CONFIG_PATH = "config.toml"
 
 
 
@@ -426,8 +427,10 @@ def prune_pyktok_json(an_item):
 
 
 ############################################################################################################
-###                     GCP buckets
+###                     manage video storage / GCP bucket
 ############################################################################################################
+
+
 
 def get_gcp_bucket(bucket_name, verbose = False):
     from google.api_core.exceptions import Forbidden
@@ -456,7 +459,27 @@ def get_gcp_bucket(bucket_name, verbose = False):
 
 
 
-def list_files_in_bucket(bucket, prefix="", include_sub_prefixes=True, suffix=""):
+def init_video_storage(verbose=False):
+    from os.path import join
+    import toml
+    cf = toml.load(CONFIG_PATH)
+
+    if cf["video_storage"]["storage_type"]=="GCP":
+        if verbose:
+            print("Connecting to GCP bucket...")
+        main_video_storage = get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
+        if main_video_storage is None:
+            print("Could not connect to GCP bucket. Exiting.")
+            return None
+    else:
+        if verbose:
+            print("Using local storage.")
+        main_video_storage = join(cf["video_storage"]["local_storage_dir"])
+    return main_video_storage
+
+
+
+"""def xxxlist_files_in_bucket(bucket, prefix="", include_sub_prefixes=True, suffix=""):
     if suffix != "" and not suffix.startswith("."):
         suffix = "."+suffix
     blobs = bucket.list_blobs(prefix=prefix)
@@ -467,19 +490,59 @@ def list_files_in_bucket(bucket, prefix="", include_sub_prefixes=True, suffix=""
         files_in_bucket = [fn for fn in files_in_bucket if "/" not in fn]
     return files_in_bucket
 
-
-
-def upload_blob(bucket, filename, source_dir="", prefix=""):
+def xxxupload_blob(bucket, filename, source_dir="", prefix=""):
     from os.path import join
     blob = bucket.blob(join(prefix,filename))
     blob.upload_from_filename(join(source_dir,filename))
 
-
-
-def download_blob(bucket, filename, prefix="", dest_dir=""):
+def xxxdownload_blob(bucket, filename, prefix="", dest_dir=""):
     from os.path import join
     blob = bucket.blob(join(prefix,filename))
     blob.download_to_filename(join(dest_dir,filename))
+"""
+
+
+def list_files_in_storage(storage_location, prefix="", include_sub_prefixes=True, suffix=""):
+    from os.path import join
+    from os import listdir
+    if isinstance(storage_location,str): # if it's a string, it's a local directory
+        files_in_storage = [fn for fn in listdir(join(storage_location,prefix)) if fn.endswith(suffix)]
+    else:
+        if suffix != "" and not suffix.startswith("."):
+            suffix = "."+suffix
+        blobs = storage_location.list_blobs(prefix=prefix)
+        files_in_storage = [blob.name for blob in blobs]
+        files_in_storage = [fn.replace(prefix,"") for fn in files_in_storage if fn.endswith(suffix)]
+        files_in_storage = [fn[1:] if fn[0]=="/" else fn for fn in files_in_storage]
+        if not include_sub_prefixes:
+            files_in_storage = [fn for fn in files_in_storage if "/" not in fn]
+        return files_in_storage
+
+
+def save_blob_to_storage(storage_location, filename, source_dir="", prefix=""):
+    from os.path import join, exists
+    from shutil import copyfile
+    if isinstance(storage_location,str): # if it's a string, it's a local directory
+        if exists(join(source_dir,filename)):
+            copyfile(join(source_dir,filename), join(storage_location,prefix,filename))
+        else:
+            print(f"File '{filename}' not found in '{source_dir}'")
+    else:
+        blob = storage_location.blob(join(prefix,filename))
+        blob.upload_from_filename(join(source_dir,filename))
+
+
+def load_blob_from_storage(storage_location, filename, prefix="", dest_dir=""):
+    from os.path import join, exists
+    from shutil import copyfile
+    if isinstance(storage_location,str): # if it's a string, it's a local directory
+        if exists(join(storage_location,prefix,filename)):
+            copyfile(join(storage_location,prefix,filename), join(dest_dir,filename))
+        else:
+            print(f"File '{filename}' not found in '{join(storage_location,prefix)}'")
+    else:
+        blob = storage_location.blob(join(prefix,filename))
+        blob.download_to_filename(join(dest_dir,filename))
 
 
 
@@ -505,31 +568,21 @@ def temp_path(filename="") -> str:
 
 def create_dirs():
     from os import makedirs
-    from os.path import exists, join
+    from os.path import join
     import toml
-    import sys
 
     cf = toml.load(CONFIG_PATH)
-    data_dir = cf["result_paths"]["main_data_dir"]
-    backup_dir = join(cf["result_paths"]["main_data_dir"], "backup")
-    #video_cover_dir = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["video_cover_dir"])
-    temp_dir = join(cf["result_paths"]["main_data_dir"], "temp")
 
-    if not (exists(cf["input_paths"]["zeeschuimer_path"])):# or exists(cf["input_paths"]["ddp_path"])):
-        print(f"Directory with baseline logs not found. Exiting.")
-        sys.exit(1)
+    makedirs(cf["result_paths"]["main_data_dir"], exist_ok=True)
+    makedirs(cf["activity_paths"]["zeeschuimer_path"], exist_ok=True)
+    makedirs(cf["activity_paths"]["fine_logs_path"], exist_ok=True)
+    makedirs(join(cf["result_paths"]["main_data_dir"], "temp"), exist_ok=True)
+    makedirs(join(cf["result_paths"]["main_data_dir"], "backup"), exist_ok=True)
 
-    if not exists(data_dir):
-        print(f"Creating directory {data_dir}")
-        makedirs(data_dir)
-
-    if not exists(temp_dir):
-        print(f"Creating directory {temp_dir}")
-        makedirs(temp_dir)
-
-    if not exists(backup_dir):
-        print(f"Creating directory {backup_dir}")
-        makedirs(backup_dir)
+    if cf["video_storage"]["storage_type"]!="GCP":
+        makedirs(join(cf["video_storage"]["local_storage_dir"],cf["video_storage"]["prefix"]), exist_ok=True)
+        makedirs(join(cf["video_storage"]["local_storage_dir"],cf["video_storage"]["audio_sub_prefix"]), exist_ok=True)
+        makedirs(join(cf["video_storage"]["local_storage_dir"],cf["video_storage"]["video_cover_prefix"]), exist_ok=True)
 
 
 
@@ -576,7 +629,6 @@ def update_config(data_list: list) -> None:
     print(f"Leave the input blank to keep the current value. Just press ENTER/RETURN.")
     print(f"Enter '---' (three hyphens) to change a value to an empty string.")
     print(f"\nIf you want to change other settings in the config file, please edit 'config.toml' directly.")
-    print(f"You can change the Gemini prompts in 'prompts.toml'.")
     print("*"*80+"\n")
 
     for section in cf:
@@ -623,7 +675,7 @@ def update_config(data_list: list) -> None:
 
 
 
-def rescue_temp_gemini_results():
+def rescue_temp_gemini_results(verbose=False):
     from os import remove, listdir
     from os.path import join, basename
     import toml
@@ -635,7 +687,10 @@ def rescue_temp_gemini_results():
     gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["gemini_video_analysis_fn"])
 
     json_saves = [g for g in listdir(temp_path()) if g.startswith("temp_gemini_results") and g.endswith(".json")]
-    print(f"Found {len(json_saves)} json files in the temp directory.")
+
+    if verbose:
+        print(f"Found {len(json_saves)} json files in the temp directory.")
+
     if len(json_saves) == 0:
         return
 
@@ -650,49 +705,48 @@ def rescue_temp_gemini_results():
 
 
     rescued_gemini_results = DataFrame(json_files)
-    rescued_gemini_results = rescued_gemini_results.dropna()
-    rescued_gemini_results["item_id"] = rescued_gemini_results["filename"].apply(lambda x: int(basename(x).split(".")[0]))
-    rescued_gemini_results.drop("filename", axis=1, inplace=True)
+
     rescued_gemini_results["analysis_time"] = 0.0
     rescued_gemini_results["processing_time"] = 0.0
-    rescued_gemini_results["analysis_ts"] = rescued_gemini_results["analysis_ts"].map(lambda x:datetime.strptime(x.split(".")[0].split("_")[-1], "%Y%m%d%H%M%S%f"))
+    rescued_gemini_results["analysis_ts"] = rescued_gemini_results.analysis_ts.map(lambda x:datetime.fromtimestamp(int(x.split("_")[-1].split(".")[0])))
+    rescued_gemini_results = rescued_gemini_results.dropna()
 
     current_gemini_results = read_pickle(gemini_video_analysis_path)
 
     rescued_gemini_results = rescued_gemini_results[~rescued_gemini_results.item_id.isin(current_gemini_results.item_id)]
 
     updated_gemini_results = concat([current_gemini_results, rescued_gemini_results])
-    n_na_values = (updated_gemini_results.isna()*1).sum().sum()
 
-    #print(updated_gemini_results.info())
-    print(f"Number of missing values: {n_na_values}")
-    print(f"shapes: Current:{current_gemini_results.shape} and Rescued:{rescued_gemini_results.shape} and Updated:{updated_gemini_results.shape}")
+    print(f"Gemini DF shapes: Old: {current_gemini_results.shape}, New: {rescued_gemini_results.shape} and Combined: {updated_gemini_results.shape}")
 
-    hey_there = input("Y to continue saving the rescued data, or N to exit")
+    if verbose:
+        hey_there = input("Y to continue saving the rescued data, or N to exit")
 
-    if hey_there.lower() != "y":
-        print("Exiting without saving the rescued data.")
-        return
+        if hey_there.lower() != "y":
+            print("Exiting without saving the rescued data.")
+            return
 
     # backup the existing analysis data and move it to the backup folder
     back_this_up(gemini_video_analysis_path, move_the_file=True)
 
-    print(f"Saving the old & rescued analysis data to {gemini_video_analysis_path}")
+    if verbose:
+        print(f"Saving the old & rescued analysis data to {gemini_video_analysis_path}")
     updated_gemini_results.to_pickle(gemini_video_analysis_path)
 
-    hey_there = input("Y to continue deleting all the rescued json files in the temp directory, or N to exit")
+    if verbose:
+        hey_there = input("Y to continue deleting all the rescued json files in the temp directory, or N to exit")
 
-    if hey_there.lower() != "y":
-        print("Exiting without saving the rescued data.")
-        return
+        if hey_there.lower() != "y":
+            print("Exiting without saving the rescued data.")
+            return
 
     for filename in json_saves:
         file_path = temp_path(filename)
         remove(file_path)
-        print(".", end="", flush=True)
-    print(" done")
-
-
+        if verbose:
+            print(".", end="", flush=True)
+    if verbose:
+        print(" done")
 
 
 
@@ -713,10 +767,16 @@ def upload_to_gemini(path, mime_type=None, verbose=False):
     if not exists(path):
         raise FileNotFoundError(f"File '{path}' not found")
 
-    file = upload_file(path, mime_type=mime_type)
-    if verbose:
-        print(f"File uploaded to Gemini.")
+    try:
+        file = upload_file(path, mime_type=mime_type)
+        if verbose:
+            print(f"File uploaded to Gemini.")
+    except Exception as e:
+        print(f"Error uploading file to Gemini: {e}")
+        return None
+    
     return file
+
 
 
 def wait_for_files_active(files, verbose = False):
@@ -749,7 +809,6 @@ def wait_for_files_active(files, verbose = False):
 
 
 
-
 def analyze_single_video(this_file, timeout=200, verbose=False):
     from json import loads
     from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -765,9 +824,8 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
         sys.exit(0)
 
 
-    with open('gemini_prompt.txt', 'r') as file:
+    with open(cf["gemini"]["prompt"], 'r') as file:
         gemini_prompt = file.read()
-    #prompts = toml.load("prompts.toml")
 
     # Create the model
     generation_config = {
@@ -793,7 +851,7 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
     while not had_enough:
         little_counter += 1
         try:
-            response = model.generate_content([this_file, gemini_prompt],#prompts["gemini"]["prompt_step_1"]],
+            response = model.generate_content([this_file, gemini_prompt],
                                             request_options={"timeout": timeout})
             response_received = True
         except Exception as e:
@@ -855,7 +913,7 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
     return raw_json
 
 
-
+"""
 def generate_content(my_prompt, verbose=False):
     from google.generativeai.types import HarmCategory, HarmBlockThreshold
     from google.generativeai import GenerativeModel, configure
@@ -898,7 +956,7 @@ def generate_content(my_prompt, verbose=False):
     return fine_text
 
     
-"""def improve_single_gemini_analysis_p(one_analysis_results_w_prompt):
+def improve_single_gemini_analysis_p(one_analysis_results_w_prompt):
     improvement_prompt = one_analysis_results_w_prompt[0]
     one_analysis_results = one_analysis_results_w_prompt[1]
     if isinstance(one_analysis_results,str):
@@ -913,80 +971,105 @@ def generate_content(my_prompt, verbose=False):
 
 
 
+def gemini_analysis_from_video_filename(a_video_filename,
+                                        timeout=30,
+                                        verbose=False):
+    from datetime import datetime
+    from os.path import join, basename
+    from json import dump
+
+    the_item_id = int(basename(a_video_filename).split(".")[0])
+
+
+    if verbose:
+        print(f"Uploading video {the_item_id} to Gemini...")
+    files_for_gemini = [
+        upload_to_gemini(a_video_filename, 
+                         mime_type="video/mp4", 
+                         verbose=verbose),
+    ]
+    files_for_gemini = [gf for gf in files_for_gemini if not gf is None] # remove any None values, i.e. failed uploads
+
+    if len(files_for_gemini) > 0:
+
+        file_is_ready_for_analysis = wait_for_files_active(files_for_gemini, verbose=verbose)
+
+        analysis_start_time = datetime.now()
+
+        if file_is_ready_for_analysis:        
+            if verbose:
+                print(f"Analyzing video {the_item_id}...")
+            fine_video_analysis_results = analyze_single_video(files_for_gemini[0], 
+                                                          timeout=timeout, 
+                                                          verbose=verbose)
+        else:
+            if verbose:
+                print(f"File prep for Gemini analysis failed: {the_item_id}")
+            fine_video_analysis_results = {}
+    else:
+        if verbose:
+            print(f"File was not uploaded to Gemini, no analysis was made:  {the_item_id}")
+        fine_video_analysis_results = {}
+
+    if len(fine_video_analysis_results) > 0:
+        print(f"{the_item_id} Gemini analysis successful")
+    else:
+        print(f"{the_item_id} Gemini analysis failed")
+
+
+    analysis_time = (datetime.now() - analysis_start_time).total_seconds()
+
+    
+    fine_video_analysis_results["item_id"] = the_item_id
+    fine_video_analysis_results["analysis_time"] = analysis_time
+    fine_video_analysis_results["analysis_ts"] = int(datetime.now().timestamp())
+
+    # Save the result at this stage for this single video as a precaution if it all blows up
+    temp_fn = join(temp_path(f"temp_gemini_results_{fine_video_analysis_results["item_id"]}_{fine_video_analysis_results["analysis_ts"]}.json"))
+    with open(temp_fn, 'w') as file:
+        dump(fine_video_analysis_results,file)
+    
+    return fine_video_analysis_results
+
+
 
 
 
 
 def gemini_video_process(the_video_file_w_number, verbose=False):
     from datetime import datetime
-    from google.generativeai import delete_file
     from os import remove
-    from os.path import join
-    from json import dump
 
     import toml
     cf = toml.load(CONFIG_PATH)
 
-    tutti_start_time = datetime.now()
     the_video_filename = the_video_file_w_number[1]
-    #print(f"{the_video_file_w_number[0]:04} {the_video_filename.split('/')[-1]}")
+    tutti_start_time = datetime.now()
     timeout = cf["gemini"]["timeout"]
 
-    if verbose:
-        print("Connecting to GCP bucket...")
-    main_bucket = get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-    if main_bucket is None:
-        print("Could not connect to GCP bucket. Exiting.")
-        return
+    main_video_storage = init_video_storage(verbose=verbose)
 
     if verbose:
-        print("Downloading video object...")
-    download_blob(main_bucket, 
+        print("Loading video object...")
+    load_blob_from_storage(main_video_storage, 
                   the_video_filename,
                   prefix=cf["video_storage"]["prefix"], 
                   dest_dir=temp_path())
-        
-    if verbose:
-        print("Uploading video to Gemini...")
-    files_for_gemini = [
-        upload_to_gemini(temp_path(the_video_filename), mime_type="video/mp4", verbose=verbose),
-    ]
-    file_is_ready_for_analysis = wait_for_files_active(files_for_gemini, verbose=verbose)
 
-    analysis_start_time = datetime.now()
+    video_analysis_results = gemini_analysis_from_video_filename(temp_path(the_video_filename),
+                                                                 timeout=timeout,
+                                                                 verbose=verbose)
 
-    if file_is_ready_for_analysis:        
-        if verbose:
-            print(f"Analyzing video...")
-        video_analysis_results = analyze_single_video(files_for_gemini[0], timeout=timeout, verbose=verbose)
-    else:
-        if verbose:
-            print(f"File prep for Gemini analysis failed: {the_video_filename}")
-        video_analysis_results = {}
+    tutti_time = (datetime.now() - tutti_start_time).total_seconds()
+    video_analysis_results["processing_time"] = tutti_time
 
-    analysis_time = (datetime.now() - analysis_start_time).total_seconds()
+    print(f"{the_video_file_w_number[0]:04} {the_video_filename.split('.')[0]} done. Gemini analysis: {video_analysis_results["analysis_time"]:.1f}s. Total time: {tutti_time:.1f}s")
 
     if verbose:
         print("Deleting files...")
-    #delete_file(files_for_gemini[0].name)
     remove(temp_path(the_video_filename))
-    
-    tutti_time = (datetime.now() - tutti_start_time).total_seconds()
-    print(f"{the_video_file_w_number[0]:04} {the_video_filename.split('.')[0]} done. Gemini analysis: {analysis_time:.1f}s. Total time: {tutti_time:.1f}s")
 
-    video_analysis_results["filename"] = the_video_filename
-    
-    # Save the result at this stage for this single video as a precaution if it all blows up
-    temp_fn = join(temp_path(f"temp_gemini_results_{the_video_file_w_number[0]:04}_{"".join([ch for ch in str(datetime.now()) if ch in '1234567890'])}.json"))
-    with open(temp_fn, 'w') as file:
-        dump(video_analysis_results,file)
-
-    video_analysis_results["analysis_time"] = analysis_time
-    video_analysis_results["processing_time"] = tutti_time
-    video_analysis_results["analysis_ts"] = datetime.now()
     return video_analysis_results
-
-
 
 
 

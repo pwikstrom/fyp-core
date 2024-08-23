@@ -18,7 +18,7 @@ reload(fyp)
 
 
 '''
-This function uses Gemini to analyze the videos in the GCP bucket.
+This function uses Gemini video analysis.
 
 Parameters:
 - some_videos_to_analyze: None, int or list of item IDs. 
@@ -28,8 +28,10 @@ Parameters:
 - experiment_mode: bool. If True, the function will not save the results to disk.
 '''
 def analyze_videos(some_videos_to_analyze=None,
-                    experiment_mode=False):
+                    experiment_mode=False,
+                    verbose=False):
     from os.path import join, basename, exists
+    from os import makedirs
     import pandas as pd
     import toml
     from datetime import datetime
@@ -43,17 +45,10 @@ def analyze_videos(some_videos_to_analyze=None,
 
     cf = toml.load(fyp.CONFIG_PATH)
 
-    #drop_previous_results_with_na = cf["gemini"]["drop_previous_results_with_na"]
-    #required_cols = cf["gemini"]["required_cols"]
     gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["gemini_video_analysis_fn"])
     pyk_metadata_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["pyk_metadata_fn"])
 
 
-    main_bucket = fyp.get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-    if main_bucket is None:
-        print("Could not connect to GCP bucket. Exiting.")
-        return
-    
     start_time = datetime.now()
     print("\n"+"*"*80)
     print(f"{start_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini analysis of videos in the storage")
@@ -94,7 +89,6 @@ def analyze_videos(some_videos_to_analyze=None,
         if some_videos_to_analyze>len(videos_to_analyze):
             some_videos_to_analyze = len(videos_to_analyze)
         videos_to_analyze = random.choice(videos_to_analyze, size=some_videos_to_analyze, replace=False)
-        #videos_to_analyze = list(set(videos_to_analyze) & set(videos_available_for_analysis))
         print(f"Selecting {some_videos_to_analyze:,} random available videos for analysis (that haven't already been analyzed).")
     else:
         print(f"Selecting all available videos for analysis (that haven't already been analyzed).") 
@@ -116,20 +110,14 @@ def analyze_videos(some_videos_to_analyze=None,
     # make a list of tuples with the video file number and the filename, to be able to follow the parallel processes a bit easier
     video_files_to_analyze_w_number = [(i+1, f"{vf}.mp4") for i,vf in enumerate(videos_to_analyze)]
 
-    # Create a multiprocessing pool with the number of desired processes
+    # let Gemini do its thing
     pool = multiprocessing.Pool(processes=8)
-
-    # Apply the process_element function to each element in parallel
     results = pool.map(fyp.gemini_video_process, video_files_to_analyze_w_number)
-
-    # Close the pool and wait for the processes to finish
     pool.close()
     pool.join()
 
     # Convert to a DataFrame
     some_results_df = pd.DataFrame(results)
-    some_results_df["item_id"] = some_results_df["filename"].apply(lambda x: int(basename(x).split(".")[0]))
-    some_results_df.drop("filename", axis=1, inplace=True)
     some_results_df = some_results_df.dropna()
 
 
@@ -144,8 +132,6 @@ def analyze_videos(some_videos_to_analyze=None,
         print("Exiting.\n"+"*"*80+"\n")
         return
     
-    some_results_df = some_results_df.dropna()#subset=required_cols)
-
     print(f"Shape of the new results dataframe: {some_results_df.shape}. Shape of the good old dataframe: {all_results_df.shape}\n")
 
     # merge the new results with the existing ones
@@ -158,6 +144,7 @@ def analyze_videos(some_videos_to_analyze=None,
         # backup the existing analysis data and move it to the backup folder
         fyp.back_this_up(gemini_video_analysis_path, move_the_file=True)
 
+        all_results_df.analysis_ts = all_results_df.analysis_ts.map(lambda x: int(x) if type(x)==float or type(x)==int else int(x.timestamp()))
         all_results_df = all_results_df.dropna().sort_values("analysis_ts").drop_duplicates(subset=["item_id"], keep="last")
         print(f"Saving the combined old & new results ({len(all_results_df)} items) to {gemini_video_analysis_path}")
         all_results_df.to_pickle(gemini_video_analysis_path)

@@ -20,7 +20,7 @@ reload(fyp)
 
 
 import toml
-cf = toml.load(CONFIG_PATH)
+cf = toml.load(fyp.CONFIG_PATH)
 my_gemini_api_key=cf["gemini"]["key"]
 
 with open('gemini_prompt.txt', 'r') as file:
@@ -117,11 +117,11 @@ def analyze_this(this_file, verbose=False, timeout=20):
     if isinstance(raw_json, dict) and len(raw_json) > 0:
         for cc in cf["gemini"]["doublecheck_these_cols"]:
             if cc in raw_json:
-                check_result = check_repetitive_patterns(raw_json[cc], min_pattern_length=5, min_repetitions=5, max_text_length=1000)
+                check_result = fyp.check_repetitive_patterns(raw_json[cc], min_pattern_length=5, min_repetitions=5, max_text_length=1000)
                 if check_result == "String too long" and cc == "text_visible_in_video":
                     if verbose:
                         print(f"{cc} is too long - cutting and checking again.")
-                    check_result = check_repetitive_patterns(raw_json[cc][:1000], min_pattern_length=5, min_repetitions=5, max_text_length=1000)
+                    check_result = fyp.check_repetitive_patterns(raw_json[cc][:1000], min_pattern_length=5, min_repetitions=5, max_text_length=1000)
                 if check_result != "Good string":
                     good_strings = False
     else:
@@ -135,7 +135,7 @@ def analyze_this(this_file, verbose=False, timeout=20):
     raw_json["analysis_ts"] = int(datetime.now().timestamp())
 
     # Save the result at this stage for this single video as a precaution if it all blows up
-    temp_fn = join(temp_path(f"temp_gemini_results_{raw_json["item_id"]}_{"".join([ch for ch in str(datetime.now()) if ch in '1234567890'])}.json"))
+    temp_fn = join(fyp.temp_path(f"temp_gemini_results_{raw_json["item_id"]}_{"".join([ch for ch in str(datetime.now()) if ch in '1234567890'])}.json"))
     with open(temp_fn, 'w') as file:
         dump(raw_json,file)
 
@@ -165,6 +165,7 @@ def analyze_videos(some_videos_to_analyze=None,
     from google.cloud.storage import transfer_manager
     from google.generativeai import configure
     from os.path import exists, join
+    from os import makedirs
     from pandas import read_pickle, DataFrame, concat
     from numpy import random
     import multiprocessing
@@ -182,19 +183,10 @@ def analyze_videos(some_videos_to_analyze=None,
     print(f"{start_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini analysis of videos in the storage")
     print("*"*80+"\n")
 
-    if verbose:
-        print("Connecting to GCP bucket...")
-    main_bucket = get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-    if main_bucket is None:
-        print("Could not connect to GCP bucket. Exiting.")
-        return
+    main_video_storage = fyp.init_video_storage(verbose=verbose)
 
-
-    drop_previous_results_with_na = cf["gemini"]["drop_previous_results_with_na"]
-    required_cols = cf["gemini"]["required_cols"]
     gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["gemini_video_analysis_fn"])
     pyk_metadata_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["pyk_metadata_fn"])
-
 
 
     # Load the PykTok metadata
@@ -215,14 +207,6 @@ def analyze_videos(some_videos_to_analyze=None,
         all_results_df = all_results_df.sort_values("analysis_ts").drop_duplicates(subset=["item_id"],keep="last")
         all_results_df.item_id = all_results_df.item_id.astype(int)
         print(f"Found {len(all_results_df):,} previous Gemini video analyses on disk.")
-        #print(f"Found {len(all_results_df):,} previous Gemini video analyses - {len(all_results_df.dropna(subset=required_cols)):,} without NA in the required columns")
-
-        # Drop or don't drop the previous results with NA values in the checked columns
-        #if drop_previous_results_with_na:
-        #    all_results_df = all_results_df.dropna(subset=required_cols)
-        #    print(f"Discarding previous results with NA values in required <{'> + <'.join(required_cols)}> column{'s' if len(required_cols) > 1 else ''}. {len(all_results_df)} previous results remain.")
-        #else:
-        #    print(f"Keeping previous results, including the ones with NA values in required <{'> + <'.join(required_cols)}> column{'s' if len(required_cols) > 1 else ''}.")
 
         analyzed_item_ids = all_results_df.item_id.unique()
     else:
@@ -252,24 +236,28 @@ def analyze_videos(some_videos_to_analyze=None,
         print("Exiting.\n"+"*"*80+"\n")
         return
 
-    # Download videos from the bucket to the temp directory
-    the_bucket_filenames = [join(cf["video_storage"]["prefix"],f"{sdf}.mp4") for sdf in videos_to_analyze]
-    if verbose:
-        print("Downloading video objects from bucket...")
-        print(datetime.now())
-    results = transfer_manager.download_many_to_path(main_bucket,
-                                                        the_bucket_filenames,
-                                                        destination_directory=temp_path(),
-                                                        max_workers=8)
+    if cf["video_storage"]["storage_type"]=="GCP":
+        # Loading videos from the bucket to the temp directory
+        the_bucket_filenames = [join(cf["video_storage"]["prefix"],f"{sdf}.mp4") for sdf in videos_to_analyze]
+        if verbose:
+            print("Downloading video objects from bucket...")
+            print(datetime.now())
+        transfer_manager.download_many_to_path(main_video_storage,
+                                                the_bucket_filenames,
+                                                destination_directory=fyp.temp_path(),
+                                                max_workers=8)
 
 
     # Uploading the video objects from the temp directory to Gemini
     if verbose:
         print("Uploading video objects to Gemini...")
         print(datetime.now())
-    video_files_in_temp_dir = [temp_path(fn) for fn in the_bucket_filenames]
+    if cf["video_storage"]["storage_type"]=="GCP":
+        local_video_files = [fyp.temp_path(fn) for fn in the_bucket_filenames]
+    else:
+        local_video_files = [join(cf["video_storage"]["local_storage_dir"],f"{fn}.mp4") for fn in videos_to_analyze]
     pool = multiprocessing.Pool()
-    the_gemini_files = pool.map(upload_video_file, video_files_in_temp_dir)
+    the_gemini_files = pool.map(upload_video_file, local_video_files)
     pool.close()
     pool.join()
 
@@ -347,7 +335,7 @@ def analyze_videos(some_videos_to_analyze=None,
 
 
     end_time = datetime.now()
-    print(f"{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini video analysis completed in {pretty_str_seconds((end_time-start_time).total_seconds())}.")
+    print(f"{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini video analysis completed in {fyp.pretty_str_seconds((end_time-start_time).total_seconds())}.")
 
 
     if len(some_results_df)>0:
@@ -367,7 +355,7 @@ def analyze_videos(some_videos_to_analyze=None,
         all_results_df = concat([all_results_df,some_results_df])
 
         # backup the existing analysis data and move it to the backup folder
-        back_this_up(gemini_video_analysis_path, move_the_file=True)
+        fyp.back_this_up(gemini_video_analysis_path, move_the_file=True)
 
         all_results_df = all_results_df.dropna().sort_values("analysis_ts").drop_duplicates(subset=["item_id"], keep="last")
         print(f"Saving the combined old & new results ({len(all_results_df)} items) to {gemini_video_analysis_path}")

@@ -47,19 +47,16 @@ def transcribe_audio(some_items_to_transcribe=None,
     audio_transcription_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["audio_transcriptions_fn"])
     environ["OPENAI_API_KEY"] = cf["openai"]["key"]
 
-    main_bucket = fyp.get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-    if main_bucket is None:
-        print("Could not connect to GCP bucket. Exiting.")
-        return
+
+    main_video_storage = fyp.init_video_storage()
 
     start_time = datetime.now()
     print("\n"+"*"*80)
     print(f"{start_time.strftime('%Y-%m-%d %H:%M:%S')}: Transcribing audio files in storage")
     print("*"*80+"\n")
 
-    audio_files = fyp.list_files_in_bucket(main_bucket, prefix=join(cf["video_storage"]['prefix'],cf["video_storage"]['audio_sub_prefix']), include_sub_prefixes=False, suffix=".mp3")
+    audio_files = fyp.list_files_in_storage(main_video_storage, prefix=join(cf["video_storage"]['prefix'],cf["video_storage"]['audio_sub_prefix']), include_sub_prefixes=False, suffix=".mp3")
     audio_id_list = [int(fn.split(".")[0]) for fn in audio_files]
-    #[vid.split(".")[0] for vid in listdir(audio_dir) if vid.endswith(".mp3")]
     print(f"There are {len(audio_id_list):,} audio files in storage.")
 
     audio_transcriptions = {}
@@ -104,10 +101,10 @@ def transcribe_audio(some_items_to_transcribe=None,
     for i,the_audio_id in enumerate(audio_ids_to_transcribe):
 
         print(f"{i+1:05}: Transcribing audio for {the_audio_id}")
-        fyp.download_blob(main_bucket,
-                          f"{the_audio_id}.mp3",
-                          prefix=join(cf["video_storage"]["prefix"],cf["video_storage"]["audio_sub_prefix"]),
-                          dest_dir=fyp.temp_path())
+        fyp.load_blob_from_storage(main_video_storage,
+                                   f"{the_audio_id}.mp3",
+                                   prefix=join(cf["video_storage"]["prefix"],cf["video_storage"]["audio_sub_prefix"]),
+                                   dest_dir=fyp.temp_path())
         audio_file= open(fyp.temp_path(f"{the_audio_id}.mp3"), "rb")
         transcription = client.audio.transcriptions.create(
             model=cf["openai"]["model"], 

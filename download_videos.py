@@ -16,7 +16,7 @@ reload(fyp)
 
 
 '''
-Downloads videos from TikTok using PykTok. It also downloads video covers and extracts audio from the downloaded videos and uploads the media to a GCP bucket.
+Downloads videos from TikTok using PykTok. It also downloads video covers and extracts audio from the downloaded videos and save the media to the main storage.
 
 Parameters:
 skip_previously_downloaded_videos: if True, items that have already been downloaded will be skipped.
@@ -24,20 +24,22 @@ get_the_videos: if True, the videos will be downloaded.
 extract_the_audio: if True, the audio will be extracted from the downloaded videos.
 get_the_covers: if True, the video covers will be downloaded.
 some_items_to_download if None, all items from logs will be downloaded. If int, that many random items will be downloaded. if list, those items will be downloaded.
-experiment_mode: if True, the script will not make any changes to the PykTok metadata file or upload any media to the GCP bucket.
+experiment_mode: if True, the script will not make any changes to the PykTok metadata file or save any media to the main storage.
 '''
 def download_videos(skip_previously_downloaded_videos=True, 
                     get_the_videos=True,
                     extract_the_audio=True,
                     get_the_covers=True,
                     some_items_to_download=None,
-                    experiment_mode=False):
+                    experiment_mode=False,
+                    verbose=False):
 
     import json
     from os import listdir
     from os.path import join, exists
     import time
     from os import walk, remove
+    from shutil import move
     from numpy import random
     import toml
     from datetime import datetime
@@ -45,13 +47,7 @@ def download_videos(skip_previously_downloaded_videos=True,
     from os import devnull as os_devnull
     import subprocess
     from copy import copy
-
-    get_the_videos_default = copy(get_the_videos)
-    extract_the_audio_default = copy(extract_the_audio)
-    get_the_covers_default = copy(get_the_covers)
-
-    if experiment_mode:
-        print("Running in experiment mode. No changes will be made to the PykTok metadata file and no metadata will be uploaded to the GCP bucket.")
+    from time import sleep
 
     compile("mypyktok.py")
     import mypyktok as pyk
@@ -64,17 +60,36 @@ def download_videos(skip_previously_downloaded_videos=True,
     # create necessary directories if they do not exist
     fyp.create_dirs()
 
+
+    # clear the temp directory
+    for fn in listdir(fyp.temp_path()):
+        remove(join(fyp.temp_path(),fn))
+
+    analyze_as_soon_as_videos_are_downloaded = cf["misc"]["analyze_as_soon_as_videos_are_downloaded"]
+
+    if analyze_as_soon_as_videos_are_downloaded:
+        import concurrent.futures
+        executor = concurrent.futures.ThreadPoolExecutor()
+
+
+    get_the_videos_default = copy(get_the_videos)
+    extract_the_audio_default = copy(extract_the_audio)
+    get_the_covers_default = copy(get_the_covers)
+
+    if experiment_mode:
+        print("Running in experiment mode. No changes will be made to the PykTok metadata file and no metadata will be saved in the main storage.")
+
+
     # define some paths
-    zeeschuimer_dir = cf["input_paths"]["zeeschuimer_path"]
-    ddp_dir = cf["input_paths"]["ddp_path"]
+    zeeschuimer_dir = cf["activity_paths"]["zeeschuimer_path"]
+    ddp_dir = cf["activity_paths"]["ddp_path"]
     pyk_metadata_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["pyk_metadata_fn"])
 
 
-    main_bucket = fyp.get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-    if main_bucket is None:
-        print("Could not connect to GCP bucket. Exiting.")
-        return
 
+
+    main_video_storage = fyp.init_video_storage(verbose=verbose)
+    
     start_time = datetime.now()
 
     print("\n"+"*"*80)
@@ -107,24 +122,23 @@ def download_videos(skip_previously_downloaded_videos=True,
         n_unmodifiable_items_in_pyk_df = []
 
 
-    print(f"Saving media in {cf['video_storage']['GCP_bucket']} and metadata in {cf["result_paths"]["pyk_metadata_fn"]}.")
+    if cf["video_storage"]["storage_type"]=="GCP":
+        print(f"Saving media in a GCP bucket - {cf['video_storage']['GCP_bucket']} - and metadata in {cf["result_paths"]["pyk_metadata_fn"]}.")
+    else:
+        print(f"Saving media in a local directory - {cf['video_storage']['local_storage_dir']} - and metadata in {cf["result_paths"]["pyk_metadata_fn"]}.")
+
+
 
     if isinstance(some_items_to_download, list) and len(some_items_to_download) > 0:
         print("Downloading {len(some_items_to_download)} items from a list of item IDs.")
-        items_to_download = list(set(map(lambda x:int(x), some_items_to_download)))
-
-    elif isinstance(some_items_to_download, int) and some_items_to_download>0:
-        items_to_download = random.choice(items_to_download, size=some_items_to_download, replace=False)
-        print(f"Downloading stuff for {some_items_to_download:,} random items.", end=" ", flush=True)
-
     else:
         unique_item_id_list = []
         if zeeschuimer_dir != "":
             print("Loading all items from Zeeschuimer logs...")
-            raw_posts_df = pd.concat([pd.read_pickle(join(cf["input_paths"]["fine_logs_path"],fn)) for fn in listdir(cf["input_paths"]["fine_logs_path"]) if fn.endswith(".pkl")])
+            raw_posts_df = pd.concat([pd.read_pickle(join(cf["activity_paths"]["fine_logs_path"],fn)) for fn in listdir(cf["activity_paths"]["fine_logs_path"]) if fn.endswith(".pkl")])
             unique_item_id_list += list(raw_posts_df.item_id.unique())
                     
-        if ddp_dir != "":
+        if ddp_dir != "": # load items from Data donation packages
             ddp_activities = []
             print(f"Loading all items from data donation packages...")
             for u, _, k in walk(ddp_dir):
@@ -147,13 +161,19 @@ def download_videos(skip_previously_downloaded_videos=True,
         print(f"Total (unique) items found in all activity logs: {len(unique_item_id_list):,}.")
         items_to_download = unique_item_id_list
 
-        # exclude items that have already been downloaded?
+        # don't download items that have already been downloaded?
         if skip_previously_downloaded_videos:
             print(f"Excluding previously items which have already been downloaded or failed to download.")
             items_to_download = list(set(items_to_download) - set(n_unmodifiable_items_in_pyk_df))
             items_to_download = list(set(items_to_download) - set(failed_items))
+
+
+    if isinstance(some_items_to_download, int) and some_items_to_download>0:
+        items_to_download = list(map(lambda x:int(x),random.choice(items_to_download, size=some_items_to_download, replace=False)))
         
-        print(f"Downloading stuff for {len(items_to_download):,} items.")
+
+
+    print(f"Downloading stuff for {len(items_to_download):,} items.")
 
 
     if len(items_to_download) == 0:
@@ -163,6 +183,7 @@ def download_videos(skip_previously_downloaded_videos=True,
 
 
     for i,an_item in enumerate(items_to_download):
+        an_item = int(an_item)
         print(f"{i:04} ({an_item})", end=": ", flush=True)
         a_url = f"https://www.tiktokv.com/share/video/{an_item}/"
         trouble = ""
@@ -172,18 +193,18 @@ def download_videos(skip_previously_downloaded_videos=True,
         extract_the_audio = copy(extract_the_audio_default)
         get_the_covers = copy(get_the_covers_default)
 
-        this_item_metadata = pyk_metadata[pyk_metadata.item_id==an_item]
-        if len(this_item_metadata) > 0:
-            #print(this_item_metadata.iloc[0]["video_downloaded"], this_item_metadata.iloc[0]["cover_downloaded"], this_item_metadata.iloc[0]["audio_extracted"])
-            if this_item_metadata.iloc[0]["video_downloaded"]:
-                print("Video already downloaded", end=" | ", flush=True)
-                get_the_videos = False
-            if this_item_metadata.iloc[0]["cover_downloaded"]:
-                print("Cover already downloaded", end=" | ", flush=True)
-                get_the_covers = False
-            if this_item_metadata.iloc[0]["audio_extracted"]:
-                print("Audio already extracted", end=" | ", flush=True)
-                extract_the_audio = False
+        if len(pyk_metadata) > 0:
+            this_item_metadata = pyk_metadata[pyk_metadata.item_id==an_item]
+            if len(this_item_metadata) > 0:
+                if this_item_metadata.iloc[0]["video_downloaded"]:
+                    print("Video already downloaded", end=" | ", flush=True)
+                    get_the_videos = False
+                if this_item_metadata.iloc[0]["cover_downloaded"]:
+                    print("Cover already downloaded", end=" | ", flush=True)
+                    get_the_covers = False
+                if this_item_metadata.iloc[0]["audio_extracted"]:
+                    print("Audio already extracted", end=" | ", flush=True)
+                    extract_the_audio = False
 
         # download video & metadata
         item_metadata = pd.DataFrame()
@@ -202,6 +223,10 @@ def download_videos(skip_previously_downloaded_videos=True,
                 print(f"Downloaded metadata{ttt}", end=" | ", flush=True)
         except:
             trouble = f"Failed to download metadata{ttt}. Further download attempts for this item abandonded."
+
+        if analyze_as_soon_as_videos_are_downloaded and exists(fyp.temp_path(f"{an_item}.mp4")):
+            executor.submit(fyp.gemini_analysis_from_video_filename, fyp.temp_path(f"{an_item}.mp4"))
+
 
         if len(trouble) == 0:
             # download video cover
@@ -229,35 +254,38 @@ def download_videos(skip_previously_downloaded_videos=True,
                 except:
                     trouble += "Failed to extract audio. "
         
-        # upload stuff to GCP bucket
+        # save/upload stuff to main storage
         if not experiment_mode:
-            try:
+            if True: #try:
                 uploaded_something = False
                 if exists(fyp.temp_path(f"{an_item}.jpg")):
                     uploaded_something = True
-                    fyp.upload_blob(main_bucket, f"{an_item}.jpg", source_dir=fyp.temp_path(), prefix=join(cf["video_storage"]['prefix'], cf["video_storage"]['video_cover_prefix']))
-                    remove(fyp.temp_path(f"{an_item}.jpg"))
+                    fyp.save_blob_to_storage(main_video_storage, f"{an_item}.jpg", source_dir=fyp.temp_path(), prefix=cf["video_storage"]['video_cover_prefix'])
+                    #if exists(fyp.temp_path(f"{an_item}.jpg")):
+                    #    remove(fyp.temp_path(f"{an_item}.jpg"))
                     item_metadata["cover_downloaded"] = True
                 if exists(fyp.temp_path(f"{an_item}.mp4")):
                     uploaded_something = True
-                    fyp.upload_blob(main_bucket, f"{an_item}.mp4", source_dir=fyp.temp_path(), prefix=cf['video_storage']['prefix'])
-                    remove(fyp.temp_path(f"{an_item}.mp4"))
+                    fyp.save_blob_to_storage(main_video_storage, f"{an_item}.mp4", source_dir=fyp.temp_path(), prefix=cf['video_storage']['prefix'])
+                    #if exists(fyp.temp_path(f"{an_item}.mp4")):
+                    #    remove(fyp.temp_path(f"{an_item}.mp4"))
                     item_metadata["video_downloaded"] = True
                 if exists(fyp.temp_path(f"{an_item}.mp3")):
                     uploaded_something = True
-                    fyp.upload_blob(main_bucket, f"{an_item}.mp3", source_dir=fyp.temp_path(), prefix=join(cf["video_storage"]['prefix'], cf["video_storage"]['audio_sub_prefix']))
-                    remove(fyp.temp_path(f"{an_item}.mp3"))
+                    fyp.save_blob_to_storage(main_video_storage, f"{an_item}.mp3", source_dir=fyp.temp_path(), prefix=cf["video_storage"]['audio_sub_prefix'])
+                    #if exists(fyp.temp_path(f"{an_item}.mp3")):
+                    #    remove(fyp.temp_path(f"{an_item}.mp3"))
                     item_metadata["audio_extracted"] = True
             
-            except:
-                trouble += "Failed to upload any media. "            
-
+            #except:
+            #    trouble += "Failed to save any media. "            
+        
         print(trouble, end=" ", flush=True)
         
         if not experiment_mode and uploaded_something:
-            print(f"Uploaded media to {cf['video_storage']['GCP_bucket']}", end=" | ", flush=True)
+            print(f"Saved media to main storage", end=" | ", flush=True)
         else:
-            print("No media to upload", end=" | ", flush=True)
+            print("No media to save", end=" | ", flush=True)
 
         if len(item_metadata) > 0:
             pyk_metadata = pd.concat([pyk_metadata, item_metadata])
@@ -271,6 +299,13 @@ def download_videos(skip_previously_downloaded_videos=True,
             print(f"Sleeping for 3s...")
             time.sleep(3)
 
+
+    if analyze_as_soon_as_videos_are_downloaded:
+        print("Everything is downloaded. Waiting for all the threads (Gemini) to finish before wrapping up. One moment...")
+        executor.shutdown(wait=True)
+        if not experiment_mode:
+            print("Analysis completed. Merging the new results with the old.")
+            fyp.rescue_temp_gemini_results()
 
     print()
     # saving the updated failed items list

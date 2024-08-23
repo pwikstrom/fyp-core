@@ -17,20 +17,19 @@ reload(fyp)
 
 
 
-def extract_audio():
+def extract_audio(verbose=False):
 
     from os.path import splitext, join, basename, exists
-    from os import devnull as os_devnull, remove
+    from os import devnull as os_devnull, remove, listdir
     import subprocess
     from datetime import datetime
     import toml
 
     cf = toml.load(fyp.CONFIG_PATH)
 
-    main_bucket = fyp.get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-    if main_bucket is None:
-        print("Could not connect to GCP bucket. Exiting.")
-        return
+
+    main_video_storage = fyp.init_video_storage(verbose=verbose)
+
 
     start_time = datetime.now()
 
@@ -38,8 +37,9 @@ def extract_audio():
     print(f"{start_time.strftime('%Y-%m-%d %H:%M:%S')}: Extraction of audio from video files in storage")
     print("*"*80+"\n")
 
-    video_files_before = fyp.list_files_in_bucket(main_bucket, prefix=cf["video_storage"]['prefix'], include_sub_prefixes=False, suffix=".mp4")
-    audio_files_before = fyp.list_files_in_bucket(main_bucket, prefix=join(cf["video_storage"]['prefix'],cf["video_storage"]['audio_sub_prefix']), include_sub_prefixes=False, suffix=".mp3")
+    video_files_before = fyp.list_files_in_storage(main_video_storage, prefix=cf["video_storage"]['prefix'], include_sub_prefixes=False, suffix=".mp4")
+    audio_files_before = fyp.list_files_in_storage(main_video_storage, prefix=join(cf["video_storage"]['prefix'],cf["video_storage"]['audio_sub_prefix']), include_sub_prefixes=False, suffix=".mp3")
+    
     audio_files_before = [fn for fn in audio_files_before if splitext(basename(fn))[0]+".mp4" in video_files_before]
 
     video_files_to_process = [fn for fn in video_files_before if splitext(fn)[0]+".mp3" not in audio_files_before]
@@ -68,7 +68,7 @@ def extract_audio():
             remove(input_file)
         if exists(output_file):
             remove(output_file)
-        fyp.download_blob(main_bucket, filename, prefix=cf["video_storage"]['prefix'], dest_dir=fyp.temp_path())
+        fyp.load_blob_from_storage(main_video_storage, filename, prefix=cf["video_storage"]['prefix'], dest_dir=fyp.temp_path())
         
         # Convert and save to the output directory
         print(f"Extracting audio from {filename}")
@@ -82,8 +82,8 @@ def extract_audio():
         with open(os_devnull, 'w') as devnull:
             subprocess.run(command, check=True, stdout=devnull, stderr=devnull)
         
-        print(f"Uploading audio to storage...", end="", flush=True)
-        fyp.upload_blob(main_bucket, basename(output_file), source_dir=fyp.temp_path(), prefix=join(cf['video_storage']['prefix'],"extracted_audio"))
+        print(f"Saving audio in main storage...", end="", flush=True)
+        fyp.save_blob_to_storage(main_video_storage, basename(output_file), source_dir=fyp.temp_path(), prefix=join(cf['video_storage']['prefix'],"extracted_audio"))
         if exists(input_file):
             remove(input_file)
         if exists(output_file):
@@ -91,7 +91,7 @@ def extract_audio():
         print(" done")
 
 
-    audio_files_after = fyp.list_files_in_bucket(main_bucket, prefix=join(cf["video_storage"]['prefix'],cf["video_storage"]['audio_sub_prefix']), include_sub_prefixes=False, suffix=".mp3")
+    audio_files_after = fyp.list_files_in_storage(main_video_storage, prefix=join(cf["video_storage"]['prefix'],cf["video_storage"]['audio_sub_prefix']), include_sub_prefixes=False, suffix=".mp3")
     audio_files_after = [fn for fn in audio_files_after if splitext(basename(fn))[0]+".mp4" in video_files_before]
     end_time = datetime.now()
     print(f"{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Audio extraction completed.")

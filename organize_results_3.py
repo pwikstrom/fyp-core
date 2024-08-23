@@ -30,8 +30,8 @@ def organize_results():
     gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["gemini_video_analysis_fn"])
     all_static_metadata_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["all_static_metadata_fn"])
     website_metadata_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["website_metadata_fn"])
-    baseline_logs_dir = cf["input_paths"]["zeeschuimer_path"]
-    ddp_dir = cf["input_paths"]["ddp_path"]
+    baseline_logs_dir = cf["activity_paths"]["zeeschuimer_path"]
+    ddp_dir = cf["activity_paths"]["ddp_path"]
 
 
     # create necessary directories if they do not exist
@@ -48,7 +48,7 @@ def organize_results():
     #item_list = []
     if exists(baseline_logs_dir):
         print("   Baseline logs available. Loading...")
-        baseline_df = pd.concat([pd.read_pickle(join(cf["input_paths"]["fine_logs_path"],fn)) for fn in listdir(cf["input_paths"]["fine_logs_path"]) if fn.endswith(".pkl")])
+        baseline_df = pd.concat([pd.read_pickle(join(cf["activity_paths"]["fine_logs_path"],fn)) for fn in listdir(cf["activity_paths"]["fine_logs_path"]) if fn.endswith(".pkl")])
         print(fyp.get_baseline_info_as_string(baseline_df))
 
         relevant_columns = ['item_id','timestamp_collected','source_platform_url','id',
@@ -97,6 +97,7 @@ def organize_results():
     n_transcribed_items = [len(x)>0 for x in all_static_metadata["audio_transcript"]].count(True)
     print(f"   Adding {n_transcribed_items:,} audio transcriptions.")
 
+    # extract hashtags from the description (remove the hashtags from the description as well)
     desc_wo_hashtags = []
     all_hashtags = []
     for u in all_static_metadata['desc']:
@@ -213,37 +214,13 @@ def organize_results():
     website_metadata = copy(all_static_metadata[target_cols])
     """
 
-    # fix the item_id column type
+    # convert item_id to str
     website_metadata.item_id = website_metadata.item_id.astype(str)
 
-
-    # extract hashtags from the description (remove the hashtags from the description as well)
-    desc_wo_hashtags = []
-    all_hashtags = []
-    for u in website_metadata['desc']:
-        if isinstance(u,str) and "#" in u:
-            hashtags = []
-            for hh in u.split(" "):
-                if len(hh)>0 and hh[0]=="#":
-                    xx = hh.split("#")
-                    hashtags += [xxx for xxx in xx if len(xxx)>0]
-            hashtags = sorted(hashtags, key=lambda x: len(x), reverse=True)
-            flurpy = u
-            for h in hashtags:
-                flurpy = flurpy.replace("#"+h, "")
-            desc_wo_hashtags += [flurpy.strip()]
-            all_hashtags += ["#"+" #".join(hashtags)]
-        else:
-            desc_wo_hashtags += [u]
-            all_hashtags+= [""]
-
-    website_metadata['desc'] = desc_wo_hashtags
-    website_metadata['hashtags'] = all_hashtags
-
-
     # fix various columns
-    website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(x).replace("nan", "").replace("None", "").replace(" ", "").split(".")[0])
-    website_metadata.g_estimated_age_of_humans_observed = website_metadata.g_estimated_age_of_humans_observed.map(lambda x: str(x).replace("nan", "").replace("None", "").replace(" ", "").split(".")[0])
+    website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(int(x)))
+    #website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(x).replace("nan", "").replace("None", "").replace(" ", "").split(".")[0])
+    #website_metadata.g_estimated_age_of_humans_observed = website_metadata.g_estimated_age_of_humans_observed.map(lambda x: str(x).replace("nan", "").replace("None", "").replace(" ", "").split(".")[0])
     website_metadata["this_video"] = [f"{u:03}/{len(website_metadata):,}" for u in list(range(1,1+len(website_metadata)))]
 
     # format numbers (int)
@@ -286,8 +263,14 @@ def organize_results():
     # rename columns so that they look a bit nicer
     new_cols = []
     for c in website_metadata.columns:
-        new_cols += [c.replace("data.", "").replace("_v2", "").replace(".", "_")]
+        new_cols += [c.replace("data.", "").replace(".", "_")]
     website_metadata.columns = new_cols
+
+    website_metadata.drop(["challenges", "video_duration", "author_id", "author_uniqueId", "author_verified", "music_id", "music_original", 
+    "music_duration", "stats_diggCount", "stats_commentCount", "stats_playCount", "stats_collectCount", "anchors", "poi_name",
+    "poi_address", "poi_city", "IsAigc", "AIGCDescription", "video_cover", "poi_province", "poi_country", "stats_shareCount", 
+    "playlistId", "isAd", "music_album", "aigcLabelType", "video_downloaded", "audio_extracted", "cover_downloaded", 
+    "last_modified", "do_not_modify", "g_music_present", "g_humans_talking"],axis=1,errors="ignore",inplace=True)
 
     print(f"   Saving website metadata for {len(website_metadata):,} videos as {website_metadata_path}\n")
     website_metadata.to_csv(website_metadata_path,index=False)
