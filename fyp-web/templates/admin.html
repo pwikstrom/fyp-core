@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  {% if current_user.fine_role == "admin" %}
+    <div class="text-container">
+      <div>
+        <h1>Users registered</h1>
+      </div>
+      <div>
+        {{ fine_html|safe }}
+      </div>
+      <div class="metadata-columns">
+        <div class="metadata-column">
+          <form id="deleteUserForm" method="POST" action="{{ url_for('delete_user') }}">
+              <div>
+                  <label for="userEmail1">Select user to delete:</label>
+                  <select id="userEmail1" name="userEmail1">
+                      {% for email in email_addresses %}
+                          <option value="{{ email }}">{{ email }}</option>
+                      {% endfor %}
+                  </select>
+              </div>
+              <button type="submit">Delete User</button>
+          </form>
+        </div>
+        <div class="metadata-column">
+          <form id="updateUserForm" method="POST" action="{{ url_for('update_user_role') }}">
+              <div>
+                  <label for="userEmail2">Select user to give a new role:</label>
+                  <select id="userEmail2" name="userEmail2">
+                      {% for email in email_addresses %}
+                          <option value="{{ email }}">{{ email }}</option>
+                      {% endfor %}
+                  </select>
+              </div>
+              <div>
+                  <label for="newRole">New Role:</label>
+                  <input type="text" id="newRole" name="newRole" required>
+              </div>
+              <button type="submit">Update User</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+
+
+  {% endif %}
+{% endblock %}

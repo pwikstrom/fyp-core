@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The For You Project</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="/">The For You Project</a>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ml-auto">
+                {% if current_user.is_authenticated %}
+                    <li class="nav-item">
+                        {{ current_user.email }}
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('video_viewer') }}">Video Viewer</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('profile') }}">Profile</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('security.logout') }}">Logout</a>
+                    </li>
+                    {% if current_user.fine_role == "admin" %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin') }}">Admin</a>
+                        </li>
+                    {% endif %}
+                {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('security.login') }}">Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('security.register') }}">Register</a>
+                    </li>
+                {% endif %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </ul>
+            <script>
+                // Hide flash messages after 3 seconds
+                setTimeout(function() {
+                    var flashMessages = document.querySelectorAll('.flash-message');
+                    flashMessages.forEach(function(flashMessage) {
+                        flashMessage.style.display = 'none';
+                    });
+                }, 3000);
+            </script>
+        </div>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

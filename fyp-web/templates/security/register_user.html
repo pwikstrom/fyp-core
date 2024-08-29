@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <div class="text-container">
+        <h1>Register</h1>
+        <form action="{{ url_for('security.register') }}" method="POST">
+            {{ register_user_form.hidden_tag() }}
+            <div>
+                {{ register_user_form.email.label }} {{ register_user_form.email(size=32) }}
+            </div>
+            <div>
+                {{ register_user_form.password.label }} {{ register_user_form.password(size=32) }}
+            </div>
+            <div>
+                {{ register_user_form.password_confirm.label }} {{ register_user_form.password_confirm(size=32) }}
+            </div>
+            <div>
+                <button type="submit">Register</button>
+            </div>
+        </form>
+    </div>
+{% endblock %}

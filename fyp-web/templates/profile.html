@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="text-container">
+	<h1>Profile</h1>
+	<p><strong>Email address:</strong> {{ current_user.email }}</p>
+	<p><strong>Role:</strong> {{ current_user.fine_role }}</p>
+	<p><strong>Registered:</strong> {{ current_user.confirmed_at }}</p>
+	<p><strong>Comments made:</strong> {{ comment_count }}</p> 
+</div>
+{% endblock %}

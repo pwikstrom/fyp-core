@@ -1,0 +1,114 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <div class="text-container">
+	    <h1>Video Viewer</h1>
+	    <div>
+	        <form class="nice-box" method="get" action="/video_viewer">
+	        	<strong>Filter</strong>
+
+              <label class="bleh" for="type_of_story"><br>Type of story:<br></label>
+	            <select name="type_of_story" id="type_of_story" onchange="this.form.submit()">
+	                {% for option in type_of_story_options %}
+	                    <option value="{{ option }}" {% if option == type_of_story %}selected{% endif %}>{{ option }}</option>
+	                {% endfor %}
+	            </select>
+
+              <label class="bleh" for="communicative_function"><br>Communicative function:<br></label>
+	            <select name="communicative_function" id="communicative_function" onchange="this.form.submit()">
+	                {% for option in communicative_function_options %}
+	                    <option value="{{ option }}" {% if option == communicative_function %}selected{% endif %}>{{ option }}</option>
+	                {% endfor %}
+	            </select>
+
+              <label class="bleh" for="sensitive_topic"><br>Gemini says it's a sensitive topic:<br></label>
+	            <select name="sensitive_topic" id="sensitive_topic" onchange="this.form.submit()">
+	                {% for option in sensitive_topic_options %}
+	                    <option value="{{ option }}" {% if option == sensitive_topic %}selected{% endif %}>{{ option }}</option>
+	                {% endfor %}
+	            </select>
+
+              <label class="bleh" for="seems_political"><br>Gemini labels it political:<br></label>
+	            <select name="seems_political" id="seems_political" onchange="this.form.submit()">
+	                {% for option in seems_political_options %}
+	                    <option value="{{ option }}" {% if option == seems_political %}selected{% endif %}>{{ option }}</option>
+	                {% endfor %}
+	            </select>
+
+	            <label class="bleh" for="keyword">Search (press Enter to commit):<br></label>
+	            <input type="text" name="keyword" id="keyword" placeholder="{{ keyword }}" maxlength="30">
+
+	            <input type="hidden" name="index" value="0">
+	        </form>
+	    </div>
+	    <div>
+	        <button onclick="location.href='/video_viewer?index={{ prevIndex }}&type_of_story={{ type_of_story }}&communicative_function={{ communicative_function }}&sensitive_topic={{ sensitive_topic }}&seems_political={{ seems_political }}&keyword={{ keyword }}'">Previous</button>
+	        <button onclick="location.href='/video_viewer?index={{ nextIndex }}&type_of_story={{ type_of_story }}&communicative_function={{ communicative_function }}&sensitive_topic={{ sensitive_topic }}&seems_political={{ seems_political }}&keyword={{ keyword }}'">Next</button>
+	    	{{ filtered_index }}
+	    </div>
+
+
+
+	    <div>
+	        <form method="POST" action="/video_viewer">
+	        	<input type="hidden" name="index" value="{{ thisIndex }}">
+	        	<!-- input type="hidden" name="category" value="{{ category }}" -->
+	        	<input type="hidden" name="video_id" value="{{ video.title }}">
+	        	<input type="hidden" name="type_of_story" value="{{ type_of_story }}">
+	        	<input type="hidden" name="communicative_function" value="{{ communicative_function }}">
+	        	<input type="hidden" name="sensitive_topic" value="{{ sensitive_topic }}">
+	        	<input type="hidden" name="seems_political" value="{{ seems_political }}">
+	        	<input type="hidden" name="keyword" value="{{ keyword }}">
+	            <textarea name="content" rows="10" cols="40" placeholder="{{ comment_placeholder }}" required></textarea>
+	            <br>
+	            <button type="submit">Submit</button>
+	        </form>
+	        <div class="comments-section">
+	            {% for comment in comments %}
+	                <div class="comment">
+	                    <p><strong>{{ comment.user.email }}</strong> ({{ comment.timestamp }}):</p>
+	                    <p>{{ comment.content }}</p>
+	                </div>
+	            {% endfor %}
+	        </div>
+	    </div>
+
+
+
+
+	</div>
+    <div class="container">
+        <div class="video-container">
+            {% if video.filename %}
+	            <video width="250" controls autoplay muted>
+    	            <source src="{{ video.filename }}" type="video/mp4">
+        	        Your browser does not support the video tag.
+            	</video>
+            {% else %}
+            	<p></p>
+            {% endif %}
+        </div>
+        <div class="text-container">
+            <h2>{{ video.title }}</h2>
+            {% for attribute in video.attributes_top %}
+                <p><strong>{{ attribute.key }}:</strong> {{ attribute.value }}</p>
+            {% endfor %}
+	        <div class="metadata-container" style="margin-top:20px">
+	            <div class="metadata-columns">
+	                <div class="metadata-column">
+	                    {% for attribute in video.attributes_bottom[:video.attributes_bottom|length // 2] %}
+	                        <p><strong>{{ attribute.key }}:</strong> {{ attribute.value }}</p>
+	                    {% endfor %}
+	                </div>
+	                <div class="metadata-column">
+	                    {% for attribute in video.attributes_bottom[video.attributes_bottom|length // 2:] %}
+	                        <p><strong>{{ attribute.key }}:</strong> {{ attribute.value }}</p>
+	                    {% endfor %}
+	                </div>
+	            </div>
+	        </div>
+	    </div>
+    </div>
+
+
+{% endblock %}

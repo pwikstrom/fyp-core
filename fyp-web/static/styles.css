@@ -1,0 +1,232 @@
+/* Reset some default browser styles */
+body, h1, h2, p, button, video {
+    margin: 0;
+    padding: 0;
+}
+
+/* Apply a sans-serif font to the whole page */
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #f4f4f4;
+    color: #333;
+    line-height: 1.6;
+    padding: 20px;
+}
+
+h1 {
+    font-size: 2em;
+    margin-bottom: 0px;
+}
+
+h2 {
+    font-size: 1.5em;
+    margin-bottom: 0px;
+}
+
+p {
+    margin-bottom: 0px;
+    font-size: 12px;
+}
+
+.container {
+    display: flex;
+    align-items: flex-start;
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.bleh {
+    font-size: 12px;
+}
+
+.nice-box {
+    background: #eee;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.text-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;  
+    background: #fff;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+/* Style the video container */
+.video-container {
+    margin-right: 20px;
+}
+
+/* Style the metadata container */
+.metadata-container {
+    flex: 1;
+}
+
+/* Style the metadata columns */
+.metadata-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* Style the video element */
+video {
+    display: block;
+    border-radius: 10px;
+}
+
+/* Style the buttons */
+button {
+    font-size: 1em;
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+.flash-message {
+    padding: 0px;
+    margin-bottom: 0px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-radius: 4px;
+    margin-left: 15px;
+}
+.flash-success {
+    color: #3c763d;
+    background-color: #dff0d8;
+    border-color: #d6e9c6;
+}
+
+/* Navigation bar styles */
+.navbar {
+    background-color: #007bff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.navbar-brand {
+    color: #fff;
+    font-size: 1.5em;
+    text-decoration: none;
+}
+
+.navbar-nav {
+    list-style: none;
+    padding-left: 0;
+    display: flex;
+    margin: 0;
+}
+
+.navbar-nav .nav-item {
+    margin-left: 15px;
+}
+
+.navbar-nav .nav-link {
+    color: #fff;
+    text-decoration: none;
+    padding: 5px 10px;
+    transition: background-color 0.3s ease;
+    border-radius: 3px;
+}
+
+.navbar-nav .nav-link:hover {
+    background-color: #0056b3;
+}
+
+.navbar-nav .nav-item:first-child .nav-link {
+    margin-left: 0;
+}
+
+.navbar-nav .nav-item:last-child .nav-link {
+    margin-right: 0;
+}
+
+form {
+    background: #fff;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+form div {
+    margin-bottom: 15px;
+}
+
+form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+form input[type="text"], form input[type="password"], form input[type="email"] {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+form button {
+    font-size: 1em;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+form button:hover {
+    background-color: #0056b3;
+}
+
+/* Table styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+table th, table td {
+    padding: 2px 10px 2px 10px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+table th {
+    background-color: #007bff;
+    color: white;
+    font-weight: bold;
+}
+
+table tbody tr:nth-child(even) {
+    background-color: #f4f4f4;
+}
+
+table tbody tr:hover {
+    background-color: #e9e9e9;
+}
