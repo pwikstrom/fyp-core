@@ -123,50 +123,62 @@ def organize_results(verbose=False):
 
     ddp_activities = []
     if cf["paths"]["ddp"] != "":
+        # load all the data donation packages
         print(f"   Loading all items from data donation packages...")
         for u, j, k in walk(cf["paths"]["ddp"]):
             for g in k:
                 if g.endswith(".json"):
                     filename = join(u, g)
                     ddp_activities += [fyp.get_ddp_activities(filename)]
-        ddp_activities = pd.concat(ddp_activities)
+                    
+        if len(ddp_activities)>0:
+            ddp_activities = pd.concat(ddp_activities)
     
-        ddp_items = []
-        for u in ddp_activities.Link:
-            if isinstance(u,str) and "/video/" in u:
-                new_item = u.split("/video/")[1]
-                if new_item[-1] == "/":
-                    new_item = new_item[:-1]
-                ddp_items.append(int(new_item))
-            else:
-                ddp_items.append(0)
-        ddp_activities["item_id"] = ddp_items
-        ddp_activities.item_id = ddp_activities.item_id.astype(int)
-        all_static_metadata.item_id = all_static_metadata.item_id.astype(int)
+            # generate item IDs from the data donation packages
+            ddp_items = []
+            for u in ddp_activities.Link:
+                if isinstance(u,str) and "/video/" in u:
+                    new_item = u.split("/video/")[1]
+                    if new_item[-1] == "/":
+                        new_item = new_item[:-1]
+                    ddp_items.append(int(new_item))
+                else:
+                    ddp_items.append(0)
+            ddp_activities["item_id"] = ddp_items
+            ddp_activities.item_id = ddp_activities.item_id.astype(int)
+            all_static_metadata.item_id = all_static_metadata.item_id.astype(int)
 
-        print(f"   {len(ddp_activities):,} items in the DDP logs.")
+            print(f"   {len(ddp_activities):,} items in the DDP logs.")
 
-        ddp_expanded = pd.merge(left=ddp_activities,
-                                right=all_static_metadata[["item_id","desc", "author_nickname","author_signature"]],
-                                on="item_id",
-                                how="left")
-        check_ddp_cols = ["UserName","SearchTerm","Comment","desc","author_nickname","author_signature"]
-        drop_words = input("   Enter words to drop from data donation packages separated by commas: ")
-        drop_words = drop_words.replace("\n"," ")
-        drop_words_list = list(map(lambda x:x.strip(), drop_words.split(",")))
-        drop_words_list = [w for w in drop_words_list if w != ""]
+            # merge the data donation packages with the static metadata
+            ddp_expanded = pd.merge(left=ddp_activities,
+                                    right=all_static_metadata[["item_id","desc", "author_nickname","author_signature"]],
+                                    on="item_id",
+                                    how="left")
+            
+            # enable the user to drop some data donation packages based on words they don't want to include
+            # NOTE - this is a bit of an experiment. It needs to be developed in a way so that a user can filter out
+            # items locally before they download the package to the research team.
+            check_ddp_cols = ["UserName","SearchTerm","Comment","desc","author_nickname","author_signature"]
+            drop_words = input("   Enter words to drop from data donation packages separated by commas: ")
+            drop_words = drop_words.replace("\n"," ")
+            drop_words_list = list(map(lambda x:x.strip(), drop_words.split(",")))
+            drop_words_list = [w for w in drop_words_list if w != ""]
 
-        ok_for_donation = []
-        for _,t in ddp_expanded[["item_id"]+check_ddp_cols].iterrows():
-            w = " ".join([s.replace("\n"," ") for s in t[check_ddp_cols] if isinstance(s,str)]).lower().strip()
-            ok_for_donation += [not any([q.lower() in w for q in drop_words_list])]
+            # create a DF mask based on if the words are in the data donation packages
+            ok_for_donation = []
+            for _,t in ddp_expanded[["item_id"]+check_ddp_cols].iterrows():
+                w = " ".join([s.replace("\n"," ") for s in t[check_ddp_cols] if isinstance(s,str)]).lower().strip()
+                ok_for_donation += [not any([q.lower() in w for q in drop_words_list])]
 
-        print(f"   {sum(ok_for_donation):,} items are ok for donation.")
-        ddp_activities = ddp_activities[ok_for_donation]
+            # apply the mask to the data donation packages 
+            print(f"   {sum(ok_for_donation):,} items are ok for donation.")
+            ddp_activities = ddp_activities[ok_for_donation]
 
-        print(f"   {len(ddp_activities):,} items in the DDP logs.")
-        print(f"   Saving.")
-        ddp_activities.to_csv(cf["paths"]["data_donations"],index=False)
+            # save the data donation packages
+            print(f"   {len(ddp_activities):,} items in the DDP logs.")
+            print(f"   Saving.")
+            ddp_activities.to_csv(cf["paths"]["data_donations"],index=False)
     
 
 

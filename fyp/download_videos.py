@@ -129,8 +129,10 @@ def download_videos(skip_previously_downloaded_videos=True,
         # load items from Zeeschuimer logs
         if cf["paths"]["zeeschuimer_raw"] != "":
             print("Loading all items from refined Zeeschuimer logs...")
-            zee_logs_df = pd.concat([pd.read_pickle(join(cf["paths"]["zeeschuimer_refined"],fn)) for fn in listdir(cf["paths"]["zeeschuimer_refined"]) if fn.endswith(".pkl")])
-            unique_item_id_list += list(zee_logs_df.item_id.unique())
+            many_dfs = [pd.read_pickle(join(cf["paths"]["zeeschuimer_refined"],fn)) for fn in listdir(cf["paths"]["zeeschuimer_refined"]) if fn.endswith(".pkl")]
+            if len(many_dfs)>0:
+                zee_logs_df = pd.concat(many_dfs)
+                unique_item_id_list += list(zee_logs_df.item_id.unique())
                     
         # load items from data donation packages
         if cf["paths"]["ddp"] != "": 
@@ -141,17 +143,18 @@ def download_videos(skip_previously_downloaded_videos=True,
                     if g.endswith(".json"):
                         filename = join(u, g)
                         ddp_activities += [fyp.get_ddp_activities(filename)]
-            ddp_activities = pd.concat(ddp_activities)
+            if len(ddp_activities)>0:
+                ddp_activities = pd.concat(ddp_activities)
         
-            # generate item IDs from the data donation packages
-            ddp_items = []
-            for u in ddp_activities.Link:
-                if isinstance(u,str) and "/video/" in u:
-                    new_item = u.split("/video/")[1]
-                    if new_item[-1] == "/":
-                        new_item = new_item[:-1]
-                    ddp_items.append(int(new_item))
-            unique_item_id_list += list(set(ddp_items))
+                # generate item IDs from the data donation packages
+                ddp_items = []
+                for u in ddp_activities.Link:
+                    if isinstance(u,str) and "/video/" in u:
+                        new_item = u.split("/video/")[1]
+                        if new_item[-1] == "/":
+                            new_item = new_item[:-1]
+                        ddp_items.append(int(new_item))
+                unique_item_id_list += list(set(ddp_items))
 
         # make sure all item IDs are integers
         unique_item_id_list = list(map(lambda x:int(x), set(unique_item_id_list)))

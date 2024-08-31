@@ -128,6 +128,14 @@ def init_config() -> dict:
     import toml
     cf = toml.load(CONFIG_PATH)
 
+    # paths to folders
+    cf["paths"]["temp"] = join(cf["paths"]["main"], "temp")
+    cf["paths"]["backup"] = join(cf["paths"]["main"], "backup")
+    cf["paths"]["ddp"] = join(cf["paths"]["main"],cf["paths"]["activity_data_folder"], "data_donations_packages")
+    cf["paths"]["zeeschuimer_raw"] = join(cf["paths"]["main"],cf["paths"]["activity_data_folder"], "zeeschuimer_raw")
+    cf["paths"]["zeeschuimer_refined"] = join(cf["paths"]["main"],cf["paths"]["activity_data_folder"], "zeeschuimer_refined")
+
+    # paths to filenames
     cf["paths"]["baseline"] = join(cf["paths"]["main"], cf["fn"]["baseline_results_fn"])
     cf["paths"]["pyk_metadata"] = join(cf["paths"]["main"], cf["fn"]["pyk_metadata_fn"])
     cf["paths"]["data_donations"] = join(cf["paths"]["main"], cf["fn"]["ddp_results_fn"])
@@ -136,8 +144,6 @@ def init_config() -> dict:
     cf["paths"]["failed_downloads"] = join(cf["paths"]["main"], cf["fn"]["pyk_failed_items_fn"])
     cf["paths"]["audio_transcription"] = join(cf["paths"]["main"], cf["fn"]["audio_transcriptions_fn"])
     cf["paths"]["website_metadata"] = join(cf["paths"]["main"], cf["fn"]["website_metadata_fn"])
-    cf["paths"]["temp"] = join(cf["paths"]["main"], "temp")
-    cf["paths"]["backup"] = join(cf["paths"]["main"], "backup")
 
     return cf
 
