@@ -7,49 +7,36 @@ Author: Patrik
 Date: 
 """
 
-from py_compile import compile
-from importlib import reload
-compile("fyp_main.py")
-import fyp_main as fyp
-reload(fyp)
 
-
-def organize_results():
-    from os.path import join, basename, exists
+def organize_results(verbose=False):
+    import fyp.fyp_main as fyp
+    from os.path import join, exists
     import pandas as pd
     from copy import copy
     from datetime import datetime
     from os import walk, listdir
-    import toml
     import json
 
-    cf = toml.load(fyp.CONFIG_PATH)
-    audio_transcription_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["audio_transcriptions_fn"])
-    baseline_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["baseline_results_fn"])
-    pyk_metadata_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["pyk_metadata_fn"])
-    gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["gemini_video_analysis_fn"])
-    all_static_metadata_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["all_static_metadata_fn"])
-    website_metadata_path = join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["website_metadata_fn"])
-    baseline_logs_dir = cf["activity_paths"]["zeeschuimer_path"]
-    ddp_dir = cf["activity_paths"]["ddp_path"]
 
-
-    # create necessary directories if they do not exist
-    fyp.create_dirs()
+    cf = fyp.init_project()
 
     start_time = datetime.now()
-
     print("\n"+"*"*80)
     print(f"{start_time.strftime('%Y-%m-%d %H:%M:%S')}: Organizing metadata and analysis results into dataframes for website and further analysis.")
     print("*"*80+"\n")
 
+
+
+
+
     print(f"(1/4) Cleaning up baseline logs (if logs are available).")
 
     #item_list = []
-    if exists(baseline_logs_dir):
+    if exists(cf["paths"]["zeeschuimer_raw"]):
         print("   Baseline logs available. Loading...")
-        baseline_df = pd.concat([pd.read_pickle(join(cf["activity_paths"]["fine_logs_path"],fn)) for fn in listdir(cf["activity_paths"]["fine_logs_path"]) if fn.endswith(".pkl")])
-        print(fyp.get_baseline_info_as_string(baseline_df))
+        baseline_df = pd.concat([pd.read_pickle(join(cf["paths"]["zeeschuimer_refined"],fn)) for fn in listdir(cf["paths"]["zeeschuimer_refined"]) if fn.endswith(".pkl")])
+        if verbose:
+            print(fyp.get_baseline_info_as_string(baseline_df))
 
         relevant_columns = ['item_id','timestamp_collected','source_platform_url','id',
         'data.author.id','data.author.nickname','data.author.signature','data.author.uniqueId','data.author.verified',
@@ -66,7 +53,7 @@ def organize_results():
         relevant_columns = [c for c in relevant_columns if c in baseline_df.columns]
 
         baseline_df = copy(baseline_df[relevant_columns])
-        baseline_df.to_csv(baseline_path,index=False)
+        baseline_df.to_csv(cf["paths"]["baseline"],index=False)
 
         print(f"   {len(baseline_df):,} items in the baseline logs.")
     else:
@@ -74,10 +61,14 @@ def organize_results():
 
 
 
-    print(f"(2/4) Loading audio transcriptions and results from Gemini video analysis - merging with the PykTok metadata.")
-    pyk_metadata = pd.read_pickle(pyk_metadata_path)
 
-    gemini_analysis = pd.read_pickle(gemini_video_analysis_path)
+
+
+    print(f"(2/4) Loading audio transcriptions and results from Gemini video analysis - merging with the PykTok metadata.")
+    pyk_metadata = pd.read_pickle(cf["paths"]["pyk_metadata"])
+
+    gemini_analysis = pd.read_pickle(cf["paths"]["gemini_video_analysis"])
+    gemini_analysis.analysis_ts = gemini_analysis.analysis_ts.map(lambda x: int(x) if type(x)==float or type(x)==int else int(x.timestamp()))
     gemini_analysis = gemini_analysis.sort_values("analysis_ts").drop_duplicates(subset=["item_id"],keep="last")
     
     gemini_analysis.drop(columns=["analysis_time","processing_time","analysis_ts"],inplace=True, errors="ignore")
@@ -90,8 +81,8 @@ def organize_results():
 
     # add the audio transcriptions to the metadata
     audio_transcriptions = {}
-    if exists(audio_transcription_path):
-        with open(audio_transcription_path, "r") as f:
+    if exists(cf["paths"]["audio_transcription"]):
+        with open(cf["paths"]["audio_transcription"], "r") as f:
             audio_transcriptions = json.load(f)
     all_static_metadata["audio_transcript"] = all_static_metadata.item_id.map(lambda x: audio_transcriptions.get(str(x), ""))
     n_transcribed_items = [len(x)>0 for x in all_static_metadata["audio_transcript"]].count(True)
@@ -116,21 +107,24 @@ def organize_results():
         else:
             desc_wo_hashtags += [u]
             all_hashtags+= [""]
-
     all_static_metadata['desc'] = desc_wo_hashtags
     all_static_metadata['hashtags'] = all_hashtags
 
 
-    print(f"   Saving static metadata {len(all_static_metadata):,} videos as {all_static_metadata_path}")
-    all_static_metadata.to_csv(all_static_metadata_path,index=False)
+
+    print(f"   Saving static metadata {len(all_static_metadata):,} videos as {cf["paths"]["all_static_metadata"]}")
+    all_static_metadata.to_csv(cf["paths"]["all_static_metadata"],index=False)
+
+
+
 
 
     print(f"(3/4) Generating a single CSV with all data donation packages.")
 
     ddp_activities = []
-    if ddp_dir != "":
+    if cf["paths"]["ddp"] != "":
         print(f"   Loading all items from data donation packages...")
-        for u, j, k in walk(ddp_dir):
+        for u, j, k in walk(cf["paths"]["ddp"]):
             for g in k:
                 if g.endswith(".json"):
                     filename = join(u, g)
@@ -172,10 +166,7 @@ def organize_results():
 
         print(f"   {len(ddp_activities):,} items in the DDP logs.")
         print(f"   Saving.")
-        ddp_activities.to_csv(join(cf["result_paths"]["main_data_dir"], cf["result_paths"]["ddp_results_fn"]),index=False)
-    
-
-
+        ddp_activities.to_csv(cf["paths"]["data_donations"],index=False)
     
 
 
@@ -219,8 +210,6 @@ def organize_results():
 
     # fix various columns
     website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(int(x)))
-    #website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(x).replace("nan", "").replace("None", "").replace(" ", "").split(".")[0])
-    #website_metadata.g_estimated_age_of_humans_observed = website_metadata.g_estimated_age_of_humans_observed.map(lambda x: str(x).replace("nan", "").replace("None", "").replace(" ", "").split(".")[0])
     website_metadata["this_video"] = [f"{u:03}/{len(website_metadata):,}" for u in list(range(1,1+len(website_metadata)))]
 
     # format numbers (int)
@@ -272,8 +261,8 @@ def organize_results():
     "playlistId", "isAd", "music_album", "aigcLabelType", "video_downloaded", "audio_extracted", "cover_downloaded", 
     "last_modified", "do_not_modify", "g_music_present", "g_humans_talking"],axis=1,errors="ignore",inplace=True)
 
-    print(f"   Saving website metadata for {len(website_metadata):,} videos as {website_metadata_path}\n")
-    website_metadata.to_csv(website_metadata_path,index=False)
+    print(f"   Saving website metadata for {len(website_metadata):,} videos as {cf["paths"]["website_metadata"]}\n")
+    website_metadata.to_csv(cf["paths"]["website_metadata"],index=False)
 
     print("Done\n"+"*"*80+"\n")
 

@@ -4,22 +4,10 @@ import schedule
 import time
 import concurrent.futures
 
-from py_compile import compile
- 
-compile("fyp_main.py")
-import fyp_main as fyp
-compile("get_baseline_log.py")
-from get_baseline_log import get_baseline_log
-compile("download_videos.py")
-from download_videos import download_videos
-compile("transcribe_audio.py")
-from transcribe_audio import transcribe_audio
-compile("analyze_videos.py")
-from analyze_videos import analyze_videos
-
+from fyp import *
 
 def get_baseline_w_script():
-    get_baseline_log("zeeschuimer_tiktok_firefox")
+    get_baseline_log("click_scripts/z_quick.scrpt")
 
 
 def run_job(job_func):
@@ -44,37 +32,32 @@ def main():
     )
 
 
-    #fyp.update_config([('input_paths', 'zeeschuimer_path'),
-    #                ('result_paths', 'main_data_dir'),
-    #                ('misc','label'),
-    #                ('video_storage','GCP_bucket')])
 
-
-    print("\n\nThis schedule will download videos, extract audio, transcribe audio, analyze videos.")
-    print("Make sure your configuration files are set up correctly!")
+    #print("\n\nThis schedule will download videos, extract audio, transcribe audio, analyze videos.")
+    #print("Make sure your configuration files are set up correctly!")
     
-    schedule.every().day.at("07:00").do(run_job, get_baseline_w_script)
-    schedule.every().day.at("13:00").do(run_job, get_baseline_w_script)
-    schedule.every().day.at("20:00").do(run_job, get_baseline_w_script)
+    schedule.every().day.at("16:51").do(run_job, get_baseline_w_script)
+    #schedule.every().day.at("13:00").do(run_job, get_baseline_w_script)
+    #schedule.every().day.at("20:00").do(run_job, get_baseline_w_script)
 
-    schedule.every().day.at("07:05").do(run_job, download_videos)
-    schedule.every().day.at("13:05").do(run_job, download_videos)
-    schedule.every().day.at("20:05").do(run_job, download_videos)
+    schedule.every().day.at("16:54").do(run_job, download_videos)
+    #schedule.every().day.at("13:05").do(run_job, download_videos)
+    #schedule.every().day.at("20:05").do(run_job, download_videos)
 
-    schedule.every().day.at("07:10").do(run_job, analyze_videos)
-    schedule.every().day.at("13:10").do(run_job, analyze_videos)
-    schedule.every().day.at("20:10").do(run_job, analyze_videos)
+    schedule.every().day.at("16:58").do(run_job, analyze_videos)
+    #schedule.every().day.at("13:10").do(run_job, analyze_videos)
+    #schedule.every().day.at("20:10").do(run_job, analyze_videos)
 
-    schedule.every().day.at("07:15").do(run_job, transcribe_audio)
-    schedule.every().day.at("13:15").do(run_job, transcribe_audio)
-    schedule.every().day.at("20:15").do(run_job, transcribe_audio)
+    schedule.every().day.at("16:59").do(run_job, transcribe_audio)
+    #schedule.every().day.at("13:15").do(run_job, transcribe_audio)
+    #schedule.every().day.at("20:15").do(run_job, transcribe_audio)
 
-    go_ahead = input("Do you want to start the schedule? Press Enter to continue...")
+    #go_ahead = input("Do you want to start the schedule? Press Enter to continue...")
 
 
-    if go_ahead != "":
-        print("Exiting...")
-        return
+    #if go_ahead != "":
+    #    print("Exiting...")
+    #    return
 
 
     print(f"Starting scheduler... {datetime.now()}")

@@ -11,12 +11,7 @@ Might be that I need to improve the multiprocessing thingy. So if anyone would l
 
 """
 
-
-from py_compile import compile
-from importlib import reload
-compile("fyp_main.py")
-import fyp_main as fyp
-reload(fyp)
+import fyp.fyp_main as fyp
 
 
 import toml
@@ -183,10 +178,10 @@ def analyze_videos(some_videos_to_analyze=None,
     print(f"{start_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini analysis of videos in the storage")
     print("*"*80+"\n")
 
-    main_video_storage = fyp.init_video_storage(verbose=verbose)
+    main_media_storage = fyp.init_media_storage(verbose=verbose)
 
-    gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["gemini_video_analysis_fn"])
-    pyk_metadata_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["pyk_metadata_fn"])
+    gemini_video_analysis_path = join(cf["fn"]["main_data_dir"],cf["fn"]["gemini_video_analysis_fn"])
+    pyk_metadata_path = join(cf["fn"]["main_data_dir"],cf["fn"]["pyk_metadata_fn"])
 
 
     # Load the PykTok metadata
@@ -197,7 +192,7 @@ def analyze_videos(some_videos_to_analyze=None,
             print(f"Number of videos available for analysis: {len(videos_available_for_analysis):,}.")
     else:
         if verbose:
-            print(f"Pyk metadata file {cf["result_paths"]["pyk_metadata_fn"]} not found. Exiting.")
+            print(f"Pyk metadata file {cf["fn"]["pyk_metadata_fn"]} not found. Exiting.")
         return
 
 
@@ -236,13 +231,13 @@ def analyze_videos(some_videos_to_analyze=None,
         print("Exiting.\n"+"*"*80+"\n")
         return
 
-    if cf["video_storage"]["storage_type"]=="GCP":
+    if cf["media_storage"]["storage_type"]=="GCP":
         # Loading videos from the bucket to the temp directory
-        the_bucket_filenames = [join(cf["video_storage"]["prefix"],f"{sdf}.mp4") for sdf in videos_to_analyze]
+        the_bucket_filenames = [join(cf["media_storage"]["video_prefix"],f"{sdf}.mp4") for sdf in videos_to_analyze]
         if verbose:
             print("Downloading video objects from bucket...")
             print(datetime.now())
-        transfer_manager.download_many_to_path(main_video_storage,
+        transfer_manager.download_many_to_path(main_media_storage,
                                                 the_bucket_filenames,
                                                 destination_directory=fyp.temp_path(),
                                                 max_workers=8)
@@ -252,10 +247,10 @@ def analyze_videos(some_videos_to_analyze=None,
     if verbose:
         print("Uploading video objects to Gemini...")
         print(datetime.now())
-    if cf["video_storage"]["storage_type"]=="GCP":
+    if cf["media_storage"]["storage_type"]=="GCP":
         local_video_files = [fyp.temp_path(fn) for fn in the_bucket_filenames]
     else:
-        local_video_files = [join(cf["video_storage"]["local_storage_dir"],f"{fn}.mp4") for fn in videos_to_analyze]
+        local_video_files = [join(cf["media_storage"]["local_storage_dir"],f"{fn}.mp4") for fn in videos_to_analyze]
     pool = multiprocessing.Pool()
     the_gemini_files = pool.map(upload_video_file, local_video_files)
     pool.close()

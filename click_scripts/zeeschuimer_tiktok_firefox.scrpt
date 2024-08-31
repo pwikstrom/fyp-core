@@ -1,0 +1,81 @@
+tell application "Firefox"
+	activate
+	delay 2
+	
+
+	
+	-- Open URL
+	tell application "System Events"
+		keystroke "t" using {command down}
+		delay 1
+		keystroke "https://www.tiktok.com/foryou"
+		keystroke return
+		delay 1
+		repeat 80 times
+			key code 53 -- escape
+			delay 0.5
+			-- key code 125 using {command down} -- down arrow
+			key code 49 -- space
+			delay 2
+		end repeat
+	end tell
+	
+	
+	-- Open URL
+	tell application "System Events"
+		keystroke "t" using {command down}
+		delay 1
+		keystroke "https://www.tiktok.com/explore"
+		keystroke return
+		delay 1
+		repeat 2 times
+		 	key code 53 -- escape
+		 	key code 125 using {command down} -- down arrow
+		 	delay 2
+		end repeat
+		key code 126 using {command down} -- up arrow
+
+		repeat 8 times -- tab through to the section buttons (hopefully getting to the first one)
+			key code 53 -- escape
+			keystroke tab
+			delay 1
+		end repeat
+		keystroke return
+		delay 1
+		
+		repeat 20 times
+			keystroke tab
+			delay 1
+			keystroke return
+			delay 1
+			key code 53 -- escape
+
+		end repeat
+	end tell
+	
+	
+	-- Open URL
+	tell application "System Events"
+		keystroke "w" using {command down}
+		delay 1
+		keystroke "w" using {command down}
+		delay 1
+	end tell
+	
+	-- Go back to the first tab and click some buttons to save the log
+	tell application "System Events"
+		repeat 3 times -- tab through to the third button (save ndjson)
+			keystroke tab
+			delay 1
+		end repeat
+		keystroke return -- press the button to save the ndjson
+		delay 2 -- wait a bit
+		keystroke tab using {shift down} -- go back to the previous button (delete)
+		delay 1 -- wait a bit
+		keystroke return -- press the button to reset the log
+		delay 1 -- wait a bit
+	end tell
+	
+	-- Close Firefox
+	tell application "Firefox" to quit
+end tell

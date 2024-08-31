@@ -6,9 +6,167 @@ Author: Patrik
 Date: 
 """
 
-CONFIG_PATH = "/Users/wikstrop/Library/CloudStorage/GoogleDrive-patrikwikstrom@gmail.com/My Drive/my projects/FYP_mine/patrik_secrets/config.toml"
-#CONFIG_PATH = "config.toml"
+CONFIG_PATH = "config.toml"
 
+
+############################################################################################################
+###                     Initialize project + File, directory and config mgmt
+############################################################################################################
+
+
+def temp_path(filename: str = "") -> str:
+    import toml
+    from os.path import join
+
+    cf = toml.load(CONFIG_PATH)
+    temp_dir = join(cf["paths"]["main"], "temp")
+    return join(temp_dir, filename)
+
+
+
+
+def create_dirs(cf: dict, clear_temp_dir: bool = False) -> None:
+    from os import makedirs
+    from os.path import join
+    from os import listdir, remove
+
+
+    for k in ["main", "zeeschuimer_raw", "zeeschuimer_refined", "temp", "backup"]:
+        makedirs(cf["paths"][k], exist_ok=True)
+
+    if cf["media_storage"]["storage_type"]!="GCP":
+        makedirs(join(cf["media_storage"]["local_storage_dir"],cf["media_storage"]["video_prefix"]), exist_ok=True)
+        makedirs(join(cf["media_storage"]["local_storage_dir"],cf["media_storage"]["audio_prefix"]), exist_ok=True)
+        makedirs(join(cf["media_storage"]["local_storage_dir"],cf["media_storage"]["video_cover_prefix"]), exist_ok=True)
+    
+    if clear_temp_dir:
+        for fn in listdir(temp_path()):
+            remove(join(temp_path(),fn))
+
+
+
+
+
+
+def back_this_up(the_file: str, move_the_file: bool = False) -> None:
+    from os.path import join, exists, basename
+    from datetime import datetime
+    from shutil import copy, move
+
+    cf = init_config()
+
+    if exists(the_file) == False:
+        return
+
+    nice_now = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    backup_file = join(cf["paths"]["backup"],"backup_"+nice_now+"_"+basename(the_file))
+
+    if move_the_file:
+        print(f"Backing up (moving) {basename(the_file)}")
+        move(the_file, backup_file)
+    else:
+        print(f"Backing up (copying) {basename(the_file)}")
+        copy(the_file, backup_file)
+
+
+
+def update_config(data_list: list) -> None:
+    """
+    The input to this function is a list of tuples, where each tuple contains a section and a key.
+    Example: update_config([("section1", "key1"), ("section2", "key2")])
+    """
+    import toml
+
+    config_filename = CONFIG_PATH
+
+
+    cf = toml.load(config_filename)
+
+    print("\n"+"*"*80)
+    print(f"Checking the config file and allowing you to update some values.")
+    print(f"Leave the input blank to keep the current value. Just press ENTER/RETURN.")
+    print(f"Enter '---' (three hyphens) to change a value to an empty string.")
+    print(f"\nIf you want to change other settings in the config file, please edit 'config.toml' directly.")
+    print("*"*80+"\n")
+
+    for section in cf:
+        for key in cf[section]:
+            if cf[section][key] == '' and (section,key) not in data_list:
+                data_list.append((section, key))
+  
+    changed = False
+    for (section, key) in data_list:
+        new_value = input(f"'{section}':'{key}' is '{cf[section][key]}'. Change to: ")
+        if new_value and new_value != cf[section][key]:
+            if new_value == "---":
+                new_value = ""
+            try:
+                # Attempt to convert to an appropriate type (int, float, etc.)
+                if not isinstance(cf[section][key],str):
+                    new_value = eval(new_value)
+            except:
+                pass  # Keep it as a string if conversion fails
+            cf[section][key] = new_value
+            print(f"   Value changed to '{new_value}'")
+            changed = True
+        else:
+            print("   Value unchanged.")
+
+    if changed:
+        print("\nUpdating config file with new values.")
+        with open(config_filename, "w") as f:
+            toml.dump(cf, f)
+    else:
+        print("\nNo changes made to the config file.")
+    print("*"*80+"\n")
+
+
+
+def init_config() -> dict:
+    from os.path import join
+    import toml
+    cf = toml.load(CONFIG_PATH)
+
+    cf["paths"]["baseline"] = join(cf["paths"]["main"], cf["fn"]["baseline_results_fn"])
+    cf["paths"]["pyk_metadata"] = join(cf["paths"]["main"], cf["fn"]["pyk_metadata_fn"])
+    cf["paths"]["data_donations"] = join(cf["paths"]["main"], cf["fn"]["ddp_results_fn"])
+    cf["paths"]["all_static_metadata"] = join(cf["paths"]["main"], cf["fn"]["all_static_metadata_fn"])
+    cf["paths"]["gemini_video_analysis"] = join(cf["paths"]["main"],cf["fn"]["gemini_video_analysis_fn"])
+    cf["paths"]["failed_downloads"] = join(cf["paths"]["main"], cf["fn"]["pyk_failed_items_fn"])
+    cf["paths"]["audio_transcription"] = join(cf["paths"]["main"], cf["fn"]["audio_transcriptions_fn"])
+    cf["paths"]["website_metadata"] = join(cf["paths"]["main"], cf["fn"]["website_metadata_fn"])
+    cf["paths"]["temp"] = join(cf["paths"]["main"], "temp")
+    cf["paths"]["backup"] = join(cf["paths"]["main"], "backup")
+
+    return cf
+
+
+def init_project(clear_temp_dir=False) -> dict:
+
+    from os import getcwd
+    from os.path import join, exists
+    from sys import path as sys_path
+
+
+    here = getcwd().split("/")
+    while not exists(join("/".join(here),"__proj__.py")):
+        here.pop()
+
+    # this is the root folder for the project structure
+    abs_project_root_path = join("/".join(here))
+    #print("Project root:",abs_project_root_path)
+
+    # add project root path to PATH since the modules are located in the project structure
+    sys_path.append(abs_project_root_path)
+
+    cf = init_config()
+    cf["paths"]["project_root"] = abs_project_root_path
+
+    create_dirs(cf, clear_temp_dir)
+
+    return cf
+        
 
 
 
@@ -17,7 +175,7 @@ CONFIG_PATH = "/Users/wikstrop/Library/CloudStorage/GoogleDrive-patrikwikstrom@g
 ###                     Utilities
 ############################################################################################################
 
-def check_repetitive_patterns(text, min_pattern_length=5, min_repetitions=5, max_text_length=1000):
+def check_repetitive_patterns(text: str, min_pattern_length: int = 5, min_repetitions: int = 5, max_text_length: int = 1000) -> str:
     from collections import defaultdict
 
     if not isinstance(text,str):
@@ -83,6 +241,8 @@ def pretty_str_seconds(proc_time_seconds: float) -> str:
         out += f"{seconds:.0f}s"
     return out
 
+
+
 def get_item_id_from_video_uri(video_uri):
     if video_uri[-1] == "/":
         video_uri = video_uri[:-1]
@@ -92,41 +252,123 @@ def get_item_id_from_video_uri(video_uri):
 
 
 
+def extract_and_join_subkeys(data, sub_keys: list):
+    """
+    Process a list of dictionaries or a single value, extracting and joining specified sub-keys.
+
+    Args:
+    data (list or any): The input data to process. If it's a list, each item is expected to be a dictionary.
+    sub_keys (list): A list of keys to extract from each dictionary in the list.
+
+    Returns:
+    str or numpy.nan: A string of concatenated values from the specified sub-keys, 
+                      or numpy.nan if the input is not a list or is empty.
+
+    Description:
+    This function extracts and concatenates values from specific keys in a list of dictionaries.
+    If the input is not a list or is empty, it returns numpy.nan.
+    For each dictionary in the list, it extracts the values of the specified sub-keys,
+    joins them with "__", and then joins all these combined values with " | ".
+
+    Example:
+    >>> data = [
+    ...     {"id": 1, "name": "John", "age": 30},
+    ...     {"id": 2, "name": "Jane", "age": 25},
+    ...     {"id": 3, "name": "Bob", "age": 35}
+    ... ]
+    >>> sub_keys = ["name", "age"]
+    >>> result = extract_and_join_subkeys(data, sub_keys)
+    >>> print(result)
+    'John__30 | Jane__25 | Bob__35'
+    """
+    from numpy import nan as np_nan
+    joined_values = []
+    if isinstance(data, list) and len(sub_keys) > 0:
+        for item in data:
+            if isinstance(item, dict):
+                subkey_values = []
+                for sk in sub_keys:
+                    if sk in item:
+                        subkey_values.append(str(item[sk]))
+                joined_values.append("__".join(subkey_values))
+        return " | ".join(joined_values)
+    else:
+        return np_nan
+
+
+
+
+
+
+def clean_url(the_url: str) -> dict:
+    from urllib.parse import unquote
+    outout = {}
+    for u in the_url.split("?")[1].split("&"):
+        v = u.split("=")
+        v[1] = unquote(v[1]).replace(",","|")
+        try:
+            v1 = int(v1)
+        except:
+            pass
+        outout.update({"source_url."+v[0]:v[1]})
+    return outout
+
+
+
+
 ############################################################################################################
 ###                     Process Zeeschuimer metadata
 ############################################################################################################
 
 # read a file with one json object per line and return a list of dictionaries
-def read_ndjson_file(file_path, label="", zeeschuimer_path="") -> list:
+def read_ndjson_file(file_path, cf=None) -> list:
     from json import loads
-    from os.path import basename
-    fine_fn = file_path.replace(zeeschuimer_path+"/","").replace("/","").replace(".ndjson","").split('-')[0]
+
+    # if the config is not provided, create a bare minimum default config
+    if cf is None:
+        cf = {"paths":{"zeeschuimer_raw":""}, "misc":{"label":""}}
+
+    fine_fn = file_path.replace(cf["paths"]["zeeschuimer_raw"]+"/","").replace("/","").replace(".ndjson","").split('-')[0]
     data = []
     with open(file_path, 'r') as file:
         for line in file:
-            line = '{"label":"' + label + '",' + line[1:]
-            #line = '{"log_script":"' + basename(file_path).split('.')[0].split('-')[0] + '",' + line[1:]
+            line = '{"label":"' + cf["misc"]["label"] + '",' + line[1:]
             line = '{"log_script":"' + fine_fn + '",' + line[1:]
-            #print(line)
             data.append(loads(line))
     return data
 
 
 
-def clean_up_baseline_log(item_list_or_ndjson_path, label="", zeeschuimer_path=""):
+def refine_zeeschuimer_log(item_list_or_ndjson_path: str | list[dict], cf=None):
     import pandas as pd
     from datetime import datetime
 
     if isinstance(item_list_or_ndjson_path, str):
-        item_list = read_ndjson_file(item_list_or_ndjson_path, label=label, zeeschuimer_path=zeeschuimer_path)
+        item_list = read_ndjson_file(item_list_or_ndjson_path, cf)
     elif isinstance(item_list_or_ndjson_path, list):
         item_list = item_list_or_ndjson_path
     else:
         print("Input must be a list of dictionaries or a path to an ndjson file.")
         return pd.DataFrame()
         
+    # if the list is empty, return an empty dataframe
+    if len(item_list) == 0:
+        return pd.DataFrame()
 
-    fix1 = {'data.contents': ['desc'],
+    # normalize the list of dictionaries into a dataframe and convert the item_id to an integer
+    zeeschuimer_logs_df = pd.json_normalize(item_list)
+    zeeschuimer_logs_df.item_id = zeeschuimer_logs_df.item_id.astype(int)
+
+    # drop these columns
+    zeeschuimer_logs_df.drop(columns=["avatar", "secUid", "data.contents", "music.cover", "music.playUrl", "data.video"], errors="ignore", inplace=True)
+
+
+    # the dataframe based zeeschuimer data has a lot of variables that we don't
+    # need or need to simplify. This dict is used to iterate over the columns in the DF
+    # and indicate that the data should be simplified into a string (or dropped). 
+    # The utility function extract_and_join_subkeys
+    # is used to extract the subkeys and join them into a single string.
+    columns_to_fix = {'data.contents': ['desc'],
     'data.video.bitrateInfo': [],
     'data.video.shareCover': [],
     'data.video.subtitleInfos': [],
@@ -143,77 +385,40 @@ def clean_up_baseline_log(item_list_or_ndjson_path, label="", zeeschuimer_path="
     'data.imagePost.shareCover.imageURL.urlList': []
     }
 
-    def fixx(x, sub_keys):
-        from numpy import nan as np_nan
-        hh = []
-        if isinstance(x, list) and len(sub_keys)>0:
-            for y in x:
-                if isinstance(y, dict):
-                    gg = []
-                    for sk in sub_keys:
-                        if sk in y:
-                            gg += [str(y[sk])]
-                    gg = "__".join(gg)
-                    hh += [gg]
-            return " | ".join(hh)
-        else:
-            return np_nan
-
-
-    def clean_url(the_url):
-        from urllib.parse import unquote
-        outout = {}
-        for u in the_url.split("?")[1].split("&"):
-            v = u.split("=")
-            v[1] = unquote(v[1]).replace(",","|")
-            try:
-                v1 = int(v1)
-            except:
-                pass
-            outout.update({"source_url."+v[0]:v[1]})
-        return outout
-
-
-    if len(item_list) == 0:
-        return pd.DataFrame()
-
-    u_raw_posts_df = pd.json_normalize(item_list)
-    u_raw_posts_df.item_id = u_raw_posts_df.item_id.astype(int)
-
-    for ff in fix1:
-        if ff in u_raw_posts_df.columns:
-            u_raw_posts_df[ff] = u_raw_posts_df[ff].apply(lambda x:fixx(x, fix1[ff]))
+    # iterate over the columns_in columns_to_fix
+    for a_column_to_fix in columns_to_fix:
+        # if the column is in the DF, apply the extract_and_join_subkeys function
+        if a_column_to_fix in zeeschuimer_logs_df.columns:
+            zeeschuimer_logs_df[a_column_to_fix] = zeeschuimer_logs_df[a_column_to_fix].apply(lambda x:extract_and_join_subkeys(x, columns_to_fix[a_column_to_fix]))
         
-    for ff in fix1:
-        if fix1[ff] == [] and ff in u_raw_posts_df.columns:
-            del u_raw_posts_df[ff]
+    # iterate over the columns_in columns_to_fix (again)
+    for ff in columns_to_fix:
+        # if the column is in the DF and the list of subkeys in 'columns_to_fix' is empty, drop the column
+        if columns_to_fix[ff] == [] and ff in zeeschuimer_logs_df.columns:
+            del zeeschuimer_logs_df[ff]
             
-    some_cols = u_raw_posts_df.columns
-    for c in some_cols:
-        for drop_these in ["avatar", "secUid","data.contents","music.cover","music.playUrl","data.video"]:
-            if drop_these in c:
-                del u_raw_posts_df[c]
-                
+    # the column 'source_url' is a string that contains the url and lots of useful metadata
+    # that we can extract into separate columns. This is done with the function clean_url
+    # and the result is a dataframe with the source_url metadata as separate columns.
     source_details = []
-    for ii in u_raw_posts_df.index:
-        source_details += [clean_url(u_raw_posts_df['source_url'][ii])]
-        
+    for ii in zeeschuimer_logs_df.index:
+        source_details += [clean_url(zeeschuimer_logs_df['source_url'][ii])]        
     source_details = pd.DataFrame(source_details)
 
-    u_raw_posts_df = pd.merge(left=u_raw_posts_df, right=source_details, left_index=True, right_index=True)
+    # merge the source_details dataframe with the zeeschuimer_logs_df dataframe and drop the source_url column
+    zeeschuimer_logs_df = pd.merge(left=zeeschuimer_logs_df, right=source_details, left_index=True, right_index=True)
+    del zeeschuimer_logs_df["source_url"]
 
-    del u_raw_posts_df["source_url"]
+    # convert the 'data.createTime' and 'timestamp_collected' columns to datetime
+    zeeschuimer_logs_df["data.createTime"] = zeeschuimer_logs_df["data.createTime"].apply(lambda x:datetime.fromtimestamp(x))
+    zeeschuimer_logs_df["timestamp_collected"] = zeeschuimer_logs_df["timestamp_collected"].apply(lambda x: datetime.fromtimestamp(int(x/1000)))
 
-    u_raw_posts_df["data.createTime"] = u_raw_posts_df["data.createTime"].apply(lambda x:datetime.fromtimestamp(x))
-    u_raw_posts_df["timestamp_collected"] = u_raw_posts_df["timestamp_collected"].apply(lambda x: datetime.fromtimestamp(int(x/1000)))
+    # replace commas and newlines in object columns with spaces
+    object_cols = [c for c in zeeschuimer_logs_df.columns if zeeschuimer_logs_df[c].dtype == 'object']
+    zeeschuimer_logs_df[object_cols] = zeeschuimer_logs_df[object_cols].map(lambda x: x.replace(","," ") if type(x)==str else x)
+    zeeschuimer_logs_df[object_cols] = zeeschuimer_logs_df[object_cols].map(lambda x: x.replace("\n"," ") if type(x) == str else x)
 
-    object_cols = [c for c in u_raw_posts_df.columns if u_raw_posts_df[c].dtype == 'object']
-
-    u_raw_posts_df[object_cols] = u_raw_posts_df[object_cols].map(lambda x: x.replace(","," ") if type(x)==str else x)
-
-    u_raw_posts_df[object_cols] = u_raw_posts_df[object_cols].map(lambda x: x.replace("\n"," ") if type(x) == str else x)
-
-    return u_raw_posts_df
+    return zeeschuimer_logs_df
 
 
 
@@ -301,7 +506,7 @@ def get_ddp_activities(the_filename):
 
 
 def get_tiktok_data(tiktok_url):
-    from mypyktok import specify_browser, get_tiktok_raw_data, generate_data_row
+    from fyp.mypyktok import specify_browser, get_tiktok_raw_data, generate_data_row
     from json import loads
     from copy import copy
     from time import sleep
@@ -354,11 +559,9 @@ def get_tiktok_data(tiktok_url):
 
 def download_video_cover(url, the_path, the_item_id, target_height=500):
     from requests import get
-    import toml
     from os.path import join, exists
     from PIL import Image
 
-    cf = toml.load(CONFIG_PATH)
     save_path = join(the_path, f"{the_item_id}.jpg")
     if not exists(save_path):
         response = get(url)
@@ -426,11 +629,12 @@ def prune_pyktok_json(an_item):
 
 
 
-############################################################################################################
-###                     manage video storage / GCP bucket
-############################################################################################################
 
 
+
+############################################################################################################
+###                     manage media storage / GCP bucket
+############################################################################################################
 
 def get_gcp_bucket(bucket_name, verbose = False):
     from google.api_core.exceptions import Forbidden
@@ -459,52 +663,32 @@ def get_gcp_bucket(bucket_name, verbose = False):
 
 
 
-def init_video_storage(verbose=False):
+def init_media_storage(verbose=False):
     from os.path import join
-    import toml
-    cf = toml.load(CONFIG_PATH)
 
-    if cf["video_storage"]["storage_type"]=="GCP":
+    cf = init_config()
+
+    if cf["media_storage"]["storage_type"]=="GCP":
         if verbose:
             print("Connecting to GCP bucket...")
-        main_video_storage = get_gcp_bucket(cf["video_storage"]["GCP_bucket"])
-        if main_video_storage is None:
+        main_media_storage = get_gcp_bucket(cf["media_storage"]["GCP_bucket"])
+        if main_media_storage is None:
             print("Could not connect to GCP bucket. Exiting.")
             return None
     else:
         if verbose:
             print("Using local storage.")
-        main_video_storage = join(cf["video_storage"]["local_storage_dir"])
-    return main_video_storage
+        main_media_storage = cf["media_storage"]["local_storage_dir"]
+    return main_media_storage
 
 
 
-"""def xxxlist_files_in_bucket(bucket, prefix="", include_sub_prefixes=True, suffix=""):
-    if suffix != "" and not suffix.startswith("."):
-        suffix = "."+suffix
-    blobs = bucket.list_blobs(prefix=prefix)
-    files_in_bucket = [blob.name for blob in blobs]
-    files_in_bucket = [fn.replace(prefix,"") for fn in files_in_bucket if fn.endswith(suffix)]
-    files_in_bucket = [fn[1:] if fn[0]=="/" else fn for fn in files_in_bucket]
-    if not include_sub_prefixes:
-        files_in_bucket = [fn for fn in files_in_bucket if "/" not in fn]
-    return files_in_bucket
-
-def xxxupload_blob(bucket, filename, source_dir="", prefix=""):
-    from os.path import join
-    blob = bucket.blob(join(prefix,filename))
-    blob.upload_from_filename(join(source_dir,filename))
-
-def xxxdownload_blob(bucket, filename, prefix="", dest_dir=""):
-    from os.path import join
-    blob = bucket.blob(join(prefix,filename))
-    blob.download_to_filename(join(dest_dir,filename))
-"""
 
 
 def list_files_in_storage(storage_location, prefix="", include_sub_prefixes=True, suffix=""):
     from os.path import join
     from os import listdir
+
     if isinstance(storage_location,str): # if it's a string, it's a local directory
         files_in_storage = [fn for fn in listdir(join(storage_location,prefix)) if fn.endswith(suffix)]
     else:
@@ -516,7 +700,9 @@ def list_files_in_storage(storage_location, prefix="", include_sub_prefixes=True
         files_in_storage = [fn[1:] if fn[0]=="/" else fn for fn in files_in_storage]
         if not include_sub_prefixes:
             files_in_storage = [fn for fn in files_in_storage if "/" not in fn]
-        return files_in_storage
+    
+    return files_in_storage
+
 
 
 def save_blob_to_storage(storage_location, filename, source_dir="", prefix=""):
@@ -549,142 +735,19 @@ def load_blob_from_storage(storage_location, filename, prefix="", dest_dir=""):
 
 
 
-
-############################################################################################################
-###                     File, directory and config mgmt
-############################################################################################################
-
-
-def temp_path(filename="") -> str:
-    import toml
-    from os.path import join
-
-    cf = toml.load(CONFIG_PATH)
-    temp_dir = join(cf["result_paths"]["main_data_dir"], "temp")
-    return join(temp_dir, filename)
-
-
-
-
-def create_dirs():
-    from os import makedirs
-    from os.path import join
-    import toml
-
-    cf = toml.load(CONFIG_PATH)
-
-    makedirs(cf["result_paths"]["main_data_dir"], exist_ok=True)
-    makedirs(cf["activity_paths"]["zeeschuimer_path"], exist_ok=True)
-    makedirs(cf["activity_paths"]["fine_logs_path"], exist_ok=True)
-    makedirs(join(cf["result_paths"]["main_data_dir"], "temp"), exist_ok=True)
-    makedirs(join(cf["result_paths"]["main_data_dir"], "backup"), exist_ok=True)
-
-    if cf["video_storage"]["storage_type"]!="GCP":
-        makedirs(join(cf["video_storage"]["local_storage_dir"],cf["video_storage"]["prefix"]), exist_ok=True)
-        makedirs(join(cf["video_storage"]["local_storage_dir"],cf["video_storage"]["audio_sub_prefix"]), exist_ok=True)
-        makedirs(join(cf["video_storage"]["local_storage_dir"],cf["video_storage"]["video_cover_prefix"]), exist_ok=True)
-
-
-
-
-def back_this_up(the_file, move_the_file=False) -> None:
-    from os.path import join, exists, basename
-    from datetime import datetime
-    from shutil import copy, move
-    import toml
-    cf = toml.load(CONFIG_PATH)
-    backup_dir = join(cf["result_paths"]["main_data_dir"], "backup")
-
-    if exists(the_file) == False:
-        #print(f"File '{the_file}' not found")
-        return
-
-    nice_now = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    backup_file = join(backup_dir,"backup_"+nice_now+"_"+basename(the_file))
-
-    if move_the_file:
-        print(f"Backing up (moving) {basename(the_file)}")
-        move(the_file, backup_file)
-    else:
-        print(f"Backing up (copying) {basename(the_file)}")
-        copy(the_file, backup_file)
-
-
-
-"""
-The input to this function is a list of tuples, where each tuple contains a section and a key.
-Example: update_config([("section1", "key1"), ("section2", "key2")])
-"""
-def update_config(data_list: list) -> None:
-    import toml
-
-    config_filename = CONFIG_PATH
-
-
-    cf = toml.load(config_filename)
-
-    print("\n"+"*"*80)
-    print(f"Checking the config file and allowing you to update some values.")
-    print(f"Leave the input blank to keep the current value. Just press ENTER/RETURN.")
-    print(f"Enter '---' (three hyphens) to change a value to an empty string.")
-    print(f"\nIf you want to change other settings in the config file, please edit 'config.toml' directly.")
-    print("*"*80+"\n")
-
-    for section in cf:
-        for key in cf[section]:
-            if cf[section][key] == '' and (section,key) not in data_list:
-                data_list.append((section, key))
-  
-    changed = False
-    for (section, key) in data_list:
-        new_value = input(f"'{section}':'{key}' is '{cf[section][key]}'. Change to: ")
-        if new_value and new_value != cf[section][key]:
-            if new_value == "---":
-                new_value = ""
-            try:
-                # Attempt to convert to an appropriate type (int, float, etc.)
-                if not isinstance(cf[section][key],str):
-                    new_value = eval(new_value)
-            except:
-                pass  # Keep it as a string if conversion fails
-            cf[section][key] = new_value
-            print(f"   Value changed to '{new_value}'")
-            changed = True
-        else:
-            print("   Value unchanged.")
-
-    if changed:
-        print("\nUpdating config file with new values.")
-        with open(config_filename, "w") as f:
-            toml.dump(cf, f)
-    else:
-        print("\nNo changes made to the config file.")
-    print("*"*80+"\n")
-
-
-
-
-
-
-
-
 ############################################################################################################
 ###                    Gemini
 ############################################################################################################
 
 
-
 def rescue_temp_gemini_results(verbose=False):
     from os import remove, listdir
     from os.path import join, basename
-    import toml
     from json import load
     from datetime import datetime
     from pandas import read_pickle, DataFrame, concat
-    cf = toml.load(CONFIG_PATH)
 
-    gemini_video_analysis_path = join(cf["result_paths"]["main_data_dir"],cf["result_paths"]["gemini_video_analysis_fn"])
+    cf = init_config()
 
     json_saves = [g for g in listdir(temp_path()) if g.startswith("temp_gemini_results") and g.endswith(".json")]
 
@@ -711,7 +774,7 @@ def rescue_temp_gemini_results(verbose=False):
     rescued_gemini_results["analysis_ts"] = rescued_gemini_results.analysis_ts.map(lambda x:datetime.fromtimestamp(int(x.split("_")[-1].split(".")[0])))
     rescued_gemini_results = rescued_gemini_results.dropna()
 
-    current_gemini_results = read_pickle(gemini_video_analysis_path)
+    current_gemini_results = read_pickle(cf["paths"]["gemini_video_analysis"])
 
     rescued_gemini_results = rescued_gemini_results[~rescued_gemini_results.item_id.isin(current_gemini_results.item_id)]
 
@@ -727,11 +790,11 @@ def rescue_temp_gemini_results(verbose=False):
             return
 
     # backup the existing analysis data and move it to the backup folder
-    back_this_up(gemini_video_analysis_path, move_the_file=True)
+    back_this_up(cf["paths"]["gemini_video_analysis"], move_the_file=True)
 
     if verbose:
-        print(f"Saving the old & rescued analysis data to {gemini_video_analysis_path}")
-    updated_gemini_results.to_pickle(gemini_video_analysis_path)
+        print(f"Saving the old & rescued analysis data to {cf["paths"]["gemini_video_analysis"]}")
+    updated_gemini_results.to_pickle(cf["paths"]["gemini_video_analysis"])
 
     if verbose:
         hey_there = input("Y to continue deleting all the rescued json files in the temp directory, or N to exit")
@@ -753,16 +816,15 @@ def rescue_temp_gemini_results(verbose=False):
 def upload_to_gemini(path, mime_type=None, verbose=False):
     from google.generativeai import upload_file, configure
     from os.path import exists
-
-    import toml
-    cf = toml.load(CONFIG_PATH)
     import sys
+
+    cf = init_config()
+
     try:
         configure(api_key=cf["gemini"]["key"])
     except:
-        print("Error Gemini API key. Exiting.")
+        print("Error Gemini API key (upload_to_gemini). Exiting.")
         sys.exit(0)
-
 
     if not exists(path):
         raise FileNotFoundError(f"File '{path}' not found")
@@ -782,14 +844,14 @@ def upload_to_gemini(path, mime_type=None, verbose=False):
 def wait_for_files_active(files, verbose = False):
     from time import sleep
     from google.generativeai import get_file, configure
-
-    import toml
-    cf = toml.load(CONFIG_PATH)
     import sys
+
+    cf = init_config()
+
     try:
         configure(api_key=cf["gemini"]["key"])
     except:
-        print("Error Gemini API key. Exiting.")
+        print("Error Gemini API key (wait_for_files_active). Exiting.")
         sys.exit(0)
 
     if verbose:
@@ -802,6 +864,7 @@ def wait_for_files_active(files, verbose = False):
             sleep(2)
             file = get_file(name)
         if file.state.name != "ACTIVE":
+            print(f"File {name} is not {file.state.name}")
             return False
     if verbose:
         print("...all files ready")
@@ -813,16 +876,15 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
     from json import loads
     from google.generativeai.types import HarmCategory, HarmBlockThreshold
     from google.generativeai import GenerativeModel, configure
-
-    import toml
-    cf = toml.load(CONFIG_PATH)
     import sys
+
+    cf = init_config()
+
     try:
         configure(api_key=cf["gemini"]["key"])
     except:
-        print("Error Gemini API key. Exiting.")
+        print("Error Gemini API key (analyze_single_video). Exiting.")
         sys.exit(0)
-
 
     with open(cf["gemini"]["prompt"], 'r') as file:
         gemini_prompt = file.read()
@@ -849,6 +911,7 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
     had_enough = False
     little_counter = 0
     while not had_enough:
+
         little_counter += 1
         try:
             response = model.generate_content([this_file, gemini_prompt],
@@ -868,6 +931,8 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
                 print(f"Finish reason: {response.candidates[0].finish_reason}")
         else:
             raw_string = response.candidates[0].content.parts[0].text
+            if verbose:
+                print(f"Response received: {raw_string}")
 
             if raw_string.endswith("\n"):
                 raw_string = raw_string[:-1]
@@ -913,63 +978,6 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
     return raw_json
 
 
-"""
-def generate_content(my_prompt, verbose=False):
-    from google.generativeai.types import HarmCategory, HarmBlockThreshold
-    from google.generativeai import GenerativeModel, configure
-    import toml
-    cf = toml.load(CONFIG_PATH)
-
-    import sys
-    try:
-        configure(api_key=cf["gemini"]["key"])
-    except:
-        print("Error Gemini API key. Exiting.")
-        sys.exit(0)
-
-    # Create the model
-    generation_config = {
-        "temperature": cf["gemini"]["temperature"],
-        "top_p": cf["gemini"]["top_p"],
-        "top_k": cf["gemini"]["top_k"],
-        "max_output_tokens": cf["gemini"]["max_output_tokens"],
-        "response_mime_type": "text/plain",
-    }
-
-    model = GenerativeModel(
-        model_name=cf["gemini"]["model"],
-        generation_config=generation_config,
-        safety_settings={
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
-    )
-
-    response = model.generate_content(my_prompt)
-    
-    try:
-        fine_text = response.candidates[0].content.parts[0].text
-    except:
-        fine_text = ""
-
-    return fine_text
-
-    
-def improve_single_gemini_analysis_p(one_analysis_results_w_prompt):
-    improvement_prompt = one_analysis_results_w_prompt[0]
-    one_analysis_results = one_analysis_results_w_prompt[1]
-    if isinstance(one_analysis_results,str):
-        one_analysis_results = one_analysis_results.replace("\n"," ")
-        a_prompt = f"{improvement_prompt} {one_analysis_results}"
-        improved_analysis = generate_content(a_prompt).strip().replace("\n"," ")
-        print(".",end="",flush=True)
-    else:
-        print("#",end="",flush=True)
-        improved_analysis = one_analysis_results
-    return improved_analysis"""
-
-
 
 def gemini_analysis_from_video_filename(a_video_filename,
                                         timeout=30,
@@ -979,7 +987,6 @@ def gemini_analysis_from_video_filename(a_video_filename,
     from json import dump
 
     the_item_id = int(basename(a_video_filename).split(".")[0])
-
 
     if verbose:
         print(f"Uploading video {the_item_id} to Gemini...")
@@ -1026,6 +1033,8 @@ def gemini_analysis_from_video_filename(a_video_filename,
 
     # Save the result at this stage for this single video as a precaution if it all blows up
     temp_fn = join(temp_path(f"temp_gemini_results_{fine_video_analysis_results["item_id"]}_{fine_video_analysis_results["analysis_ts"]}.json"))
+    if verbose:
+        print(f"Saving temp Gemini results to {temp_fn}")
     with open(temp_fn, 'w') as file:
         dump(fine_video_analysis_results,file)
     
@@ -1040,20 +1049,20 @@ def gemini_video_process(the_video_file_w_number, verbose=False):
     from datetime import datetime
     from os import remove
 
-    import toml
-    cf = toml.load(CONFIG_PATH)
-
+    the_number = the_video_file_w_number[0]
     the_video_filename = the_video_file_w_number[1]
+    cf = the_video_file_w_number[2]
+
     tutti_start_time = datetime.now()
     timeout = cf["gemini"]["timeout"]
 
-    main_video_storage = init_video_storage(verbose=verbose)
+    main_media_storage = init_media_storage(verbose=verbose)
 
     if verbose:
         print("Loading video object...")
-    load_blob_from_storage(main_video_storage, 
+    load_blob_from_storage(main_media_storage, 
                   the_video_filename,
-                  prefix=cf["video_storage"]["prefix"], 
+                  prefix=cf["media_storage"]["video_prefix"], 
                   dest_dir=temp_path())
 
     video_analysis_results = gemini_analysis_from_video_filename(temp_path(the_video_filename),
@@ -1063,7 +1072,7 @@ def gemini_video_process(the_video_file_w_number, verbose=False):
     tutti_time = (datetime.now() - tutti_start_time).total_seconds()
     video_analysis_results["processing_time"] = tutti_time
 
-    print(f"{the_video_file_w_number[0]:04} {the_video_filename.split('.')[0]} done. Gemini analysis: {video_analysis_results["analysis_time"]:.1f}s. Total time: {tutti_time:.1f}s")
+    print(f"{the_number:04} {the_video_filename.split('.')[0]} done. Gemini analysis: {video_analysis_results["analysis_time"]:.1f}s. Total time: {tutti_time:.1f}s")
 
     if verbose:
         print("Deleting files...")

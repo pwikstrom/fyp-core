@@ -10,13 +10,11 @@ import browser_cookie3
 from bs4 import BeautifulSoup
 from datetime import datetime
 import json
-import numpy as np
 import os
 import pandas as pd
-import random
 import re
 import requests
-import time
+
 
 headers = {'Accept-Encoding': 'gzip, deflate, sdch',
            'Accept-Language': 'en-US,en;q=0.8',
@@ -25,8 +23,8 @@ headers = {'Accept-Encoding': 'gzip, deflate, sdch',
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
            'Cache-Control': 'max-age=0',
            'Connection': 'keep-alive'}
-url_regex = r'(?<=\.com/)(.+?)(?=\?|$)'
-runsb_rec = 'We strongly recommend you run \'specify_browser\' first, which will allow you to run pyktok\'s functions without using the browser_name parameter every time. \'specify_browser\' takes as its sole argument a string representing a browser installed on your system, e.g. "chrome," "firefox," "edge," etc.'
+#url_regex = r'(?<=\.com/)(.+?)(?=\?|$)'
+#runsb_rec = 'We strongly recommend you run \'specify_browser\' first, which will allow you to run pyktok\'s functions without using the browser_name parameter every time. \'specify_browser\' takes as its sole argument a string representing a browser installed on your system, e.g. "chrome," "firefox," "edge," etc.'
 runsb_err = 'No browser defined for cookie extraction. We strongly recommend you run \'specify_browser\', which takes as its sole argument a string representing a browser installed on your system, e.g. "chrome," "firefox," "edge," etc.'
 
 #print(runsb_rec)
@@ -50,6 +48,7 @@ def deduplicate_metadata(metadata_fn, video_df, dedup_field='video_id'):
     else:
         combined_data = video_df
     return combined_data.drop_duplicates(dedup_field)
+
 
 
 
@@ -97,7 +96,7 @@ pyk_data_defaults = {
 
 
 """
-This is Patrik's version of this function. The original is on the original Github repo
+This is Patrik's version of this function. The original is on freelon's Github repo
 """
 def generate_data_row(item_struct):
     from copy import copy
