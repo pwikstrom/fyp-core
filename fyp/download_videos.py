@@ -11,7 +11,8 @@ Date:
 import fyp.fyp_main as fyp
 
 
-def download_videos(skip_previously_downloaded_videos=True, 
+def download_videos(retry_records_with_missing_media=False,
+                    retry_failed_downloads=False,
                     get_the_videos=True,
                     extract_the_audio=True,
                     get_the_covers=True,
@@ -22,24 +23,24 @@ def download_videos(skip_previously_downloaded_videos=True,
     Downloads videos from TikTok using PykTok. It also downloads video covers and extracts audio from the downloaded videos and save the media to the main storage.
 
     Parameters:
-    skip_previously_downloaded_videos: if True, items that have already been downloaded will be skipped.
-    get_the_videos: if True, the videos will be downloaded.
-    extract_the_audio: if True, the audio will be extracted from the downloaded videos.
-    get_the_covers: if True, the video covers will be downloaded.
-    some_items_to_download if None, all items from logs will be downloaded. If int, that many random items will be downloaded. if list, those items will be downloaded.
-    experiment_mode: if True, the script will not make any changes to the PykTok metadata file or save any media to the main storage.
+    -- retry_records_with_missing_media: if True, items missing at least one form of media will be downloaded again...
+       ...if False - records with do_not_modify set to True will be skipped.
+    -- retry_failed_downloads: if True, items that have failed to download will be downloaded again.
+    -- get_the_videos: if True, the videos will be downloaded.
+    -- extract_the_audio: if True, the audio will be extracted from the downloaded videos.
+    -- get_the_covers: if True, the video covers will be downloaded.
+    -- some_items_to_download: if None, all items from logs will be downloaded. If int, that many random items will be downloaded. if list, those items will be downloaded.
+    -- experiment_mode: if True, the script will not make any changes to the PykTok metadata file or save any media to the main storage.
+    -- verbose: if True, the script will print more information.
     """
 
 
     import json
-    from os import listdir
     from os.path import join, exists
-    import time
-    from os import walk
+    from os import walk, listdir, remove, devnull as os_devnull
     from numpy import random
     from datetime import datetime
     import pandas as pd
-    from os import devnull as os_devnull
     import subprocess
     from copy import copy
     from time import sleep
@@ -49,6 +50,8 @@ def download_videos(skip_previously_downloaded_videos=True,
 
 
 
+    #retry_failed_downloads = True
+
 
     # initialize things
     if experiment_mode:
@@ -57,9 +60,15 @@ def download_videos(skip_previously_downloaded_videos=True,
     cf = fyp.init_project(clear_temp_dir=True)
     main_media_storage = fyp.init_media_storage(verbose=verbose)
 
+
+    # This is not working very well, so I removed the flag from the config file
+    # but keep it here for a while to see if I can get it to work
+    cf["misc"]["analyze_as_soon_as_videos_are_downloaded"] = False
     if cf["misc"]["analyze_as_soon_as_videos_are_downloaded"]:
         import concurrent.futures
         executor = concurrent.futures.ThreadPoolExecutor()
+
+
 
     # set default values for get_the_videos, extract_the_audio, and get_the_covers
     # I need to remember these since I'm going to overwrite them in the download loop
@@ -78,11 +87,14 @@ def download_videos(skip_previously_downloaded_videos=True,
 
     # Load list of videos where previous download attempts have failed.
     failed_downloads = []
-    if exists(cf["paths"]["failed_downloads"]):
-        with open(cf["paths"]["failed_downloads"], 'r') as file:
-            failed_downloads = json.load(file)
-        print(f"Records of {len(failed_downloads):,} previously failed download attempts loaded from disk.")
-    failed_downloads = list(map(lambda x:int(x), failed_downloads))
+    if not retry_failed_downloads:
+        if exists(cf["paths"]["failed_downloads"]):
+            with open(cf["paths"]["failed_downloads"], 'r') as file:
+                failed_downloads = json.load(file)
+            print(f"Records of {len(failed_downloads):,} previously failed download attempts loaded from disk.")
+        failed_downloads = list(map(lambda x:int(x), failed_downloads))
+
+    # how many failed downloads were there before?
     n_failed_downloads_before = len(failed_downloads)
 
 
@@ -101,11 +113,22 @@ def download_videos(skip_previously_downloaded_videos=True,
             pyk_metadata.to_pickle(cf["paths"]["pyk_metadata"])
 
         # get a list of item IDs that should not be modified
-        n_unmodifiable_items_in_pyk_df = pyk_metadata[pyk_metadata.do_not_modify].item_id.unique()
-        print(f"Number of video metadata records: {len(n_unmodifiable_items_in_pyk_df):,}.")
+        # the default is that 'do_not_modify' is set to True for all items
+        # you can individually set it to False for items that you want to be overwrite
+        unmodifiable_items_in_pyk_df = pyk_metadata[pyk_metadata.do_not_modify].item_id.unique()
+        print(f"Number of video metadata records (where do_not_modify is True): {len(unmodifiable_items_in_pyk_df):,}.")
+
+        # Filter items that have video, audio and video cover downloaded
+        items_with_all_media = pyk_metadata[
+            (pyk_metadata['video_downloaded'] == True) &
+            (pyk_metadata['audio_extracted'] == True) & 
+            (pyk_metadata['cover_downloaded'] == True)
+        ].item_id.unique()
+
+        print(f"Number of video metadata records with all media objects: {len(items_with_all_media):,}")
     else:
         pyk_metadata = pd.DataFrame()
-        n_unmodifiable_items_in_pyk_df = []
+        unmodifiable_items_in_pyk_df = []
 
 
 
@@ -161,11 +184,15 @@ def download_videos(skip_previously_downloaded_videos=True,
         print(f"Total (unique) items found in all activity logs: {len(unique_item_id_list):,}.")
         items_to_download = unique_item_id_list
 
-        # don't download items that have already been downloaded?
-        if skip_previously_downloaded_videos:
-            print(f"Excluding previously items which have already been downloaded or failed to download.")
-            items_to_download = list(set(items_to_download) - set(n_unmodifiable_items_in_pyk_df))
-            items_to_download = list(set(items_to_download) - set(failed_downloads))
+
+        # retry records with missing media
+        if retry_records_with_missing_media:
+            print(f"Retrying all records with missing media, but not touching complete records.")
+            items_to_download = list(set(items_to_download) - set(items_with_all_media))
+        else:
+            print(f"Excluding all records in the PykTok metadata file with do_not_modify set to True.")
+            items_to_download = list(set(items_to_download) - set(unmodifiable_items_in_pyk_df))
+
 
     # if option 2, sample that many items from the list of potentially downloadable items
     if isinstance(some_items_to_download, int) and some_items_to_download>0:
@@ -189,16 +216,19 @@ def download_videos(skip_previously_downloaded_videos=True,
     # B. If flag is set, asynchronously launch Gemini analysis of the video
     # C. If a video was downloaded, download the video cover and extract the audio
     # D. If flag is set, asynchronously launch Gemini analysis of the audio
-    print(f"Downloading media+metadata for {len(items_to_download):,} items. Media will be saved in a {"GCP bucket" if cf['media_storage']['storage_type']=="GCP" else "local directory"}")
+    print(f"Downloading media+metadata for {len(items_to_download):,} items. Media will be saved in a {'GCP bucket' if cf['media_storage']['storage_type']=='GCP' else 'local directory'}\n")
 
     # iterate over items to download
     for i,an_item in enumerate(items_to_download):
         an_item = int(an_item) # just in case
-        print(f"{i:04} ({an_item})", end=": ", flush=True)
         a_url = f"https://www.tiktokv.com/share/video/{an_item}/"
-        trouble = ""
-        ttt = ""
+        trouble = False
+        gemini_launched = False
 
+        #print(f"{i:04} Downloading {an_item}", end=": ", flush=True)
+        fine_string = f"{i:04} Downloading {an_item}: "
+
+        
         # reset the download flags to the default values
         get_the_videos = copy(get_the_videos_default)
         extract_the_audio = copy(extract_the_audio_default)
@@ -206,50 +236,69 @@ def download_videos(skip_previously_downloaded_videos=True,
 
         # check what media has already been downloaded and adjust the download flags accordingly
         if len(pyk_metadata) > 0:
-            this_item_metadata = pyk_metadata[pyk_metadata.item_id==an_item]
-            if len(this_item_metadata) > 0:
-                if this_item_metadata.iloc[0]["video_downloaded"]:
-                    print("Video already downloaded", end=" | ", flush=True)
+            old_data_for_this_item = pyk_metadata[pyk_metadata.item_id==an_item]
+            if len(old_data_for_this_item) > 0:
+                if old_data_for_this_item.iloc[0]["video_downloaded"]:
+                    #print("Video already downloaded", end=" | ", flush=True)
+                    fine_string += "Video already downloaded  |  "
                     get_the_videos = False
-                if this_item_metadata.iloc[0]["cover_downloaded"]:
-                    print("Cover already downloaded", end=" | ", flush=True)
+                if old_data_for_this_item.iloc[0]["cover_downloaded"]:
+                    #print("Cover already downloaded", end=" | ", flush=True)
+                    fine_string += "Cover already downloaded  |  "
                     get_the_covers = False
-                if this_item_metadata.iloc[0]["audio_extracted"]:
-                    print("Audio already extracted", end=" | ", flush=True)
+                if old_data_for_this_item.iloc[0]["audio_extracted"]:
+                    #print("Audio already extracted", end=" | ", flush=True)
+                    fine_string += "Audio already extracted  |  "
                     extract_the_audio = False
 
         # A. Download video & metadata using PykTok
-        item_metadata = pd.DataFrame()
+        new_item_metadata = pd.DataFrame()
         try:
-            item_metadata = pyk.save_tiktok(
+            new_item_metadata = pyk.save_tiktok(
                 a_url,
                 save_video=get_the_videos,
                 browser_name='chrome',
                 save_path=fyp.temp_path())
             
-            ttt = " & video" if get_the_videos else ""
-            if len(item_metadata) == 0:
-                trouble = f"Failed to download metadata{ttt}. Further download attempts for this item abandonded."
+            if new_item_metadata is None or len(new_item_metadata) == 0:
+                trouble = True
+                #print(f"Metadata FAIL - Won't try to download anything else", end=" | ", flush=True)
+                fine_string += "Metadata FAIL - Won't try to download anything else  |  "
             else:
-                print(f"Downloaded metadata{ttt}", end=" | ", flush=True)
-        except:
-            trouble = f"Failed to download metadata{ttt}. Further download attempts for this item abandonded."
+                #print(f"Metadata SUCCESS.", end=" | ", flush=True)
+                fine_string += "Metadata SUCCESS.  |  "
+                if get_the_videos and new_item_metadata.iloc[0]["video_downloaded"] == True:
+                    #print(f"Video SUCCESS.", end=" | ", flush=True)
+                    fine_string += "Video SUCCESS.  |  "
+                elif get_the_videos and new_item_metadata.iloc[0]["video_downloaded"] == False:
+                    trouble = True
+                    #print(f"Video FAIL - Won't try to download anything else", end=" | ", flush=True)
+                    fine_string += "Video FAIL - Won't try to download anything else  |  "
+        except Exception as e:
+            # this should never happen
+            trouble = True
+            #print(f"!!!ERROR: Unexpected PykTok ERROR {e}!!! ", end=" | ", flush=True)
+            fine_string += "!!!ERROR: Unexpected PykTok ERROR {e}!!!  |  "
+        # B. If flag is set, and video exists,asynchronously launch Gemini analysis of the video
 
-        # B. If flag is set, asynchronously launch Gemini analysis of the video
-        if cf["misc"]["analyze_as_soon_as_videos_are_downloaded"] and exists(fyp.temp_path(f"{an_item}.mp4")):
+        if not trouble and cf["misc"]["analyze_as_soon_as_videos_are_downloaded"] and exists(fyp.temp_path(f"{an_item}.mp4")):
+            gemini_launched = True
             executor.submit(fyp.gemini_analysis_from_video_filename, fyp.temp_path(f"{an_item}.mp4"))
 
 
         # C. If a video was downloaded, download the video cover and extract the audio
-        if len(trouble) == 0:
+        if not trouble and exists(fyp.temp_path(f"{an_item}.mp4")):
             # download video cover
             if get_the_covers:
                 try:
-                    fyp.download_video_cover(item_metadata.iloc[0]["video_cover"], fyp.temp_path(), an_item)
-                    print(f"Downloaded video cover", end=" | ", flush=True)
+                    fyp.download_video_cover(new_item_metadata.iloc[0]["video_cover"], fyp.temp_path(), an_item)
+                    #print(f"VideoCover SUCCESS", end=" | ", flush=True)
+                    fine_string += "VideoCover SUCCESS  |  "
                 except:
-                    trouble += "Failed to download video cover. "
-            
+                    trouble = True
+                    #print(f"VideoCover FAIL", end=" | ", flush=True)
+                    fine_string += "VideoCover FAIL  |  "
+
             # extract audio from downloaded video
             if extract_the_audio:
                 try:
@@ -263,9 +312,12 @@ def download_videos(skip_previously_downloaded_videos=True,
                     ]
                     with open(os_devnull, 'w') as devnull:
                         subprocess.run(command, check=True, stdout=devnull, stderr=devnull, timeout=10)
-                    print(f"Extracted audio", end=" | ", flush=True)
+                    #print(f"AudioExtract SUCCESS", end=" | ", flush=True)
+                    fine_string += "AudioExtract SUCCESS  |  "
                 except:
-                    trouble += "Failed to extract audio. "
+                    trouble = True
+                    #print(f"AudioExtract FAIL", end=" | ", flush=True)
+                    fine_string += "AudioExtract FAIL  |  "
 
         # D. If flag is set, asynchronously launch Gemini analysis of the audio
         if cf["misc"]["analyze_as_soon_as_videos_are_downloaded"] and exists(fyp.temp_path(f"{an_item}.mp3")):
@@ -281,38 +333,38 @@ def download_videos(skip_previously_downloaded_videos=True,
                 if exists(fyp.temp_path(f"{an_item}.jpg")):
                     uploaded_something = True
                     fyp.save_blob_to_storage(main_media_storage, f"{an_item}.jpg", source_dir=fyp.temp_path(), prefix=cf["media_storage"]["video_cover_prefix"])
-                    item_metadata["cover_downloaded"] = True
+                    new_item_metadata["cover_downloaded"] = True
                 if exists(fyp.temp_path(f"{an_item}.mp4")):
                     uploaded_something = True
                     fyp.save_blob_to_storage(main_media_storage, f"{an_item}.mp4", source_dir=fyp.temp_path(), prefix=cf["media_storage"]["video_prefix"])
-                    item_metadata["video_downloaded"] = True
+                    new_item_metadata["video_downloaded"] = True
                 if exists(fyp.temp_path(f"{an_item}.mp3")):
                     uploaded_something = True
                     fyp.save_blob_to_storage(main_media_storage, f"{an_item}.mp3", source_dir=fyp.temp_path(), prefix=cf["media_storage"]["audio_prefix"])
-                    item_metadata["audio_extracted"] = True
-            
+                    new_item_metadata["audio_extracted"] = True
+
+            if uploaded_something:
+                #print(f"Saved media to storage", end=" | ", flush=True)
+                fine_string += "Saved media to storage  |  "
+            else:
+                #print("No media to save", end=" | ", flush=True)
+                fine_string += "No media to save  |  "
+
             #except:
-            #    trouble += "Failed to save any media. "            
-        
-        print(trouble, end=" ", flush=True)
 
         # save metadata
-        if not experiment_mode and uploaded_something:
-            print(f"Saved media to storage", end=" | ", flush=True)
-        else:
-            print("No media to save", end=" | ", flush=True)
-
-        if len(item_metadata) > 0:
-            pyk_metadata = pd.concat([pyk_metadata, item_metadata])
+        if len(new_item_metadata) > 0:
+            pyk_metadata = pd.concat([pyk_metadata, new_item_metadata])
 
             if not experiment_mode:
                 pyk_metadata.to_pickle(cf["paths"]["pyk_metadata"])
-            print(f"done {len(pyk_metadata):,}")
+            #print(f"DONE. {len(pyk_metadata):,}")
+            fine_string += f"DONE. {len(pyk_metadata):,}"
         else:
             if not an_item in failed_downloads:
                 failed_downloads.append(an_item)
-            print(f"Sleeping for 3s...")
-            time.sleep(3)
+
+        print(fine_string)
 
     # end of the download loop
 
@@ -321,8 +373,8 @@ def download_videos(skip_previously_downloaded_videos=True,
 
 
     # wait for all the threads (Gemini) to finish before wrapping up
-    if cf["misc"]["analyze_as_soon_as_videos_are_downloaded"]:
-        print("Everything is downloaded. Waiting for all Gemini processesto finish before wrapping up. One moment...")
+    if gemini_launched:
+        print("\nEverything is downloaded. Please wait for all Gemini processes to finish before wrapping up. It might take a while...")
         executor.shutdown(wait=True)
 
         # the outputs from the Gemini analyses are saved as a series of json files in the temp directory
@@ -342,33 +394,37 @@ def download_videos(skip_previously_downloaded_videos=True,
 
 
     # saving the updated failed downloads list
-    if not experiment_mode and len(failed_downloads) > n_failed_downloads_before:
-        
+    if not experiment_mode:
         fyp.back_this_up(cf["paths"]["failed_downloads"])
 
-        with open(cf["paths"]["failed_downloads"], 'w') as file:
-            # Write the list to the file as JSON
-            json.dump(failed_downloads, file)
-            print(f"Updating records of failed download attempts.")
+        if len(failed_downloads) > n_failed_downloads_before:
+            with open(cf["paths"]["failed_downloads"], 'w') as file:
+                # Write the list to the file as JSON
+                json.dump(failed_downloads, file)
+                print(f"Updating records of failed download attempts.")
+        elif len(failed_downloads) == 0:
+            if exists(cf["paths"]["failed_downloads"]):
+                remove(cf["paths"]["failed_downloads"])
 
 
-
-
-
-
-    end_time = datetime.now()
-    print(f"\n{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Process completed.")
-    if not experiment_mode:
-        items_in_pyk_metadata_df = pd.read_pickle(cf["paths"]["pyk_metadata"]).item_id.unique()
-        print(f"There are now {len(items_in_pyk_metadata_df):,} unique items in the PykTok metadata file.")
 
     # clear the temp dir (it won't be creating any new directories)
     fyp.create_dirs(cf, clear_temp_dir=True)  
 
+
+
+    # print some final info
+    end_time = datetime.now()
+    print(f"\n{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Process completed.")
+    if not experiment_mode:
+        items_in_pyk_metadata_df = pd.read_pickle(cf["paths"]["pyk_metadata"]).item_id.unique()
+        print(f"   There are now {len(items_in_pyk_metadata_df):,} unique items in the PykTok metadata file.")
     print("Done\n"+"*"*80+"\n")
 
+
+
     if experiment_mode:
-        return pyk_metadata, item_metadata, failed_downloads
+        return pyk_metadata, new_item_metadata, failed_downloads
 
 
 if __name__ == "__main__":

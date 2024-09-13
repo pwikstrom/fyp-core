@@ -6,12 +6,14 @@ Author: Patrik
 Date: 
 """
 
+PARAMETERS_PATH = "parameters.toml"
 CONFIG_PATH = "config.toml"
 
 
 ############################################################################################################
 ###                     Initialize project + File, directory and config mgmt
 ############################################################################################################
+
 
 
 def temp_path(filename: str = "") -> str:
@@ -31,7 +33,7 @@ def create_dirs(cf: dict, clear_temp_dir: bool = False) -> None:
     from os import listdir, remove
 
 
-    for k in ["main", "zeeschuimer_raw", "zeeschuimer_refined", "temp", "backup"]:
+    for k in ["main", "zeeschuimer_raw", "zeeschuimer_refined", "ddp", "temp", "backup"]:
         makedirs(cf["paths"][k], exist_ok=True)
 
     if cf["media_storage"]["storage_type"]!="GCP":
@@ -127,23 +129,34 @@ def init_config() -> dict:
     from os.path import join
     import toml
     cf = toml.load(CONFIG_PATH)
+    params = toml.load(PARAMETERS_PATH)
 
     # paths to folders
     cf["paths"]["temp"] = join(cf["paths"]["main"], "temp")
     cf["paths"]["backup"] = join(cf["paths"]["main"], "backup")
-    cf["paths"]["ddp"] = join(cf["paths"]["main"],cf["paths"]["activity_data_folder"], "data_donations_packages")
-    cf["paths"]["zeeschuimer_raw"] = join(cf["paths"]["main"],cf["paths"]["activity_data_folder"], "zeeschuimer_raw")
-    cf["paths"]["zeeschuimer_refined"] = join(cf["paths"]["main"],cf["paths"]["activity_data_folder"], "zeeschuimer_refined")
+    cf["paths"]["ddp"] = join(cf["paths"]["main"],"activity_data", "data_donations_packages")
+    cf["paths"]["zeeschuimer_raw"] = join(cf["paths"]["main"],"activity_data", "zeeschuimer_raw")
+    cf["paths"]["zeeschuimer_refined"] = join(cf["paths"]["main"],"activity_data", "zeeschuimer_refined")
 
     # paths to filenames
-    cf["paths"]["baseline"] = join(cf["paths"]["main"], cf["fn"]["baseline_results_fn"])
-    cf["paths"]["pyk_metadata"] = join(cf["paths"]["main"], cf["fn"]["pyk_metadata_fn"])
-    cf["paths"]["data_donations"] = join(cf["paths"]["main"], cf["fn"]["ddp_results_fn"])
-    cf["paths"]["all_static_metadata"] = join(cf["paths"]["main"], cf["fn"]["all_static_metadata_fn"])
-    cf["paths"]["gemini_video_analysis"] = join(cf["paths"]["main"],cf["fn"]["gemini_video_analysis_fn"])
-    cf["paths"]["failed_downloads"] = join(cf["paths"]["main"], cf["fn"]["pyk_failed_items_fn"])
-    cf["paths"]["audio_transcription"] = join(cf["paths"]["main"], cf["fn"]["audio_transcriptions_fn"])
-    cf["paths"]["website_metadata"] = join(cf["paths"]["main"], cf["fn"]["website_metadata_fn"])
+    cf["paths"]["baseline"] = join(cf["paths"]["main"], params["fn"]["baseline_results_fn"])
+    cf["paths"]["pyk_metadata"] = join(cf["paths"]["main"], params["fn"]["pyk_metadata_fn"])
+    cf["paths"]["data_donations"] = join(cf["paths"]["main"], params["fn"]["ddp_results_fn"])
+    cf["paths"]["all_static_metadata"] = join(cf["paths"]["main"], params["fn"]["all_static_metadata_fn"])
+    cf["paths"]["gemini_video_analysis"] = join(cf["paths"]["main"],params["fn"]["gemini_video_analysis_fn"])
+    cf["paths"]["failed_downloads"] = join(cf["paths"]["main"], params["fn"]["pyk_failed_items_fn"])
+    cf["paths"]["audio_transcription"] = join(cf["paths"]["main"], params["fn"]["audio_transcriptions_fn"])
+    cf["paths"]["website_metadata"] = join(cf["paths"]["main"], params["fn"]["website_metadata_fn"])
+
+    for k in params.keys():
+        if k not in cf.keys():
+            cf[k] = params[k]
+        else:
+            for k2 in params[k].keys():
+                if k2 not in cf[k].keys():
+                    cf[k][k2] = params[k][k2]
+
+
 
     return cf
 
@@ -318,6 +331,99 @@ def clean_url(the_url: str) -> dict:
             pass
         outout.update({"source_url."+v[0]:v[1]})
     return outout
+
+
+
+
+
+
+def reduce_video_frame_rate_and_dimensions(input_video_path, output_video_path, target_width=500, target_fps=5, verbose=False):
+    """
+    Reduces the frame rate and dimensions of a video using OpenCV while maintaining aspect ratio.
+
+    Args:
+        input_video_path: Path to the input video file.
+        output_video_path: Path to the output video file.
+        target_width: Target width of the video.
+        target_fps: Target frame rate.
+        verbose: Whether to print verbose output.
+    """
+    import os
+    from cv2 import VideoCapture, VideoWriter, VideoWriter_fourcc, resize, CAP_PROP_FPS, CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
+
+    print("memememe")
+
+    cap = VideoCapture(input_video_path)
+    original_fps = cap.get(CAP_PROP_FPS)
+    frame_width = int(cap.get(CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(CAP_PROP_FRAME_HEIGHT))
+
+    # Calculate target height to maintain aspect ratio
+    target_height = int(frame_height * target_width / frame_width)
+
+    # Output video writer
+    out = VideoWriter(output_video_path, VideoWriter_fourcc(*'mp4v'), target_fps, (target_width, target_height))
+
+    if verbose:
+        print(f"Input video: {input_video_path} ({frame_width}x{frame_height}, {original_fps} FPS, {os.path.getsize(input_video_path)//1000:,}kbytes)")
+
+    frame_interval = int(original_fps / target_fps)  # Interval to pick frames
+
+    frame_count = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Write the frame only if it's the right interval
+        if frame_count % frame_interval == 0:
+            # Resize the frame while maintaining aspect ratio
+            frame = resize(frame, (target_width, target_height))
+            out.write(frame)
+
+        frame_count += 1
+
+    if verbose:
+        print(f"Output video: {output_video_path} ({target_width}x{target_height}, {target_fps} FPS, {os.path.getsize(output_video_path)//1000:,} kbytes)")
+
+    cap.release()
+    out.release()
+
+
+
+
+def add_audio_to_video(input_video_path, input_audio_path, output_video_path, verbose=False):
+    """
+    Adds audio from the original video to the processed video using ffmpeg.
+
+    Args:
+        input_video_path: Path to the input video file with audio.
+        temp_video_path: Path to the temporary video file without audio.
+        output_video_path: Path to the final output video with audio.
+        verbose: Whether to print verbose output.
+    """
+    import subprocess
+    import os
+
+
+    command = [
+        'ffmpeg',
+        '-i', input_video_path,
+        '-i', input_audio_path,
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-strict', 'experimental',
+        '-shortest', output_video_path
+    ]
+
+    if verbose:
+        command.append('-y')
+        print("Running command:", ' '.join(command))
+
+    subprocess.run(command, check=True)
+
+    if verbose:
+        print(f"Final video with audio: {output_video_path} ({os.path.getsize(output_video_path)} bytes)")
 
 
 
@@ -744,16 +850,24 @@ def load_blob_from_storage(storage_location, filename, prefix="", dest_dir=""):
 ############################################################################################################
 ###                    Gemini
 ############################################################################################################
+from sys import exit as sys_exit
+from google.generativeai import configure
+cf = init_config()
+try:
+    configure(api_key=cf["gemini"]["key"])
+except:
+    print("Error Gemini API key (analyze_single_video). Exiting.")
+    sys_exit(0)
 
 
-def rescue_temp_gemini_results(verbose=False):
-    from os import remove, listdir
-    from os.path import join, basename
+def rescue_temp_gemini_results():
+    from os import remove, listdir, exists
     from json import load
     from datetime import datetime
     from pandas import read_pickle, DataFrame, concat
 
     cf = init_config()
+    verbose = cf["gemini"]["verbose"]
 
     json_saves = [g for g in listdir(temp_path()) if g.startswith("temp_gemini_results") and g.endswith(".json")]
 
@@ -775,14 +889,16 @@ def rescue_temp_gemini_results(verbose=False):
 
     rescued_gemini_results = DataFrame(json_files)
 
-    rescued_gemini_results["analysis_time"] = 0.0
-    rescued_gemini_results["processing_time"] = 0.0
     rescued_gemini_results["analysis_ts"] = rescued_gemini_results.analysis_ts.map(lambda x:datetime.fromtimestamp(int(x.split("_")[-1].split(".")[0])))
     rescued_gemini_results = rescued_gemini_results.dropna()
 
-    current_gemini_results = read_pickle(cf["paths"]["gemini_video_analysis"])
+    if exists(cf["paths"]["gemini_video_analysis"]):
+        current_gemini_results = read_pickle(cf["paths"]["gemini_video_analysis"])
+        current_gemini_results.drop(columns=["analysis_time","processing_time"], inplace=True, errors="ignore")
 
-    rescued_gemini_results = rescued_gemini_results[~rescued_gemini_results.item_id.isin(current_gemini_results.item_id)]
+        rescued_gemini_results = rescued_gemini_results[~rescued_gemini_results.item_id.isin(current_gemini_results.item_id)]
+    else:
+        current_gemini_results = DataFrame()
 
     updated_gemini_results = concat([current_gemini_results, rescued_gemini_results])
 
@@ -799,7 +915,7 @@ def rescue_temp_gemini_results(verbose=False):
     back_this_up(cf["paths"]["gemini_video_analysis"], move_the_file=True)
 
     if verbose:
-        print(f"Saving the old & rescued analysis data to {cf["paths"]["gemini_video_analysis"]}")
+        print(f"Saving the old & rescued analysis data to {cf['paths']['gemini_video_analysis']}")
     updated_gemini_results.to_pickle(cf["paths"]["gemini_video_analysis"])
 
     if verbose:
@@ -819,18 +935,20 @@ def rescue_temp_gemini_results(verbose=False):
 
 
 
-def upload_to_gemini(path, mime_type=None, verbose=False):
+def upload_to_gemini(path, mime_type=None):
     from google.generativeai import upload_file, configure
     from os.path import exists
     import sys
 
     cf = init_config()
+    verbose = cf["gemini"]["verbose"]
 
-    try:
-        configure(api_key=cf["gemini"]["key"])
-    except:
-        print("Error Gemini API key (upload_to_gemini). Exiting.")
-        sys.exit(0)
+    """    try:
+            configure(api_key=cf["gemini"]["key"])
+        except:
+            print("Error Gemini API key (analyze_single_video). Exiting.")
+            sys.exit(0)
+    """
 
     if not exists(path):
         raise FileNotFoundError(f"File '{path}' not found")
@@ -838,59 +956,68 @@ def upload_to_gemini(path, mime_type=None, verbose=False):
     try:
         file = upload_file(path, mime_type=mime_type)
         if verbose:
-            print(f"File uploaded to Gemini.")
+            print(f"File {file.display_name} uploaded to Gemini.")
     except Exception as e:
-        print(f"Error uploading file to Gemini: {e}")
+        print(f"Error uploading file {file.display_name} to Gemini: {e}")
         return None
     
     return file
 
 
 
-def wait_for_files_active(files, verbose = False):
+def wait_for_files_active(files):
     from time import sleep
     from google.generativeai import get_file, configure
     import sys
 
     cf = init_config()
+    verbose = cf["gemini"]["verbose"]
 
-    try:
-        configure(api_key=cf["gemini"]["key"])
-    except:
-        print("Error Gemini API key (wait_for_files_active). Exiting.")
-        sys.exit(0)
+    """    try:
+            configure(api_key=cf["gemini"]["key"])
+        except:
+            print("Error Gemini API key (analyze_single_video). Exiting.")
+            sys.exit(0)
+    """
 
-    if verbose:
-        print("Waiting for file to be prepared...")
     for name in (file.name for file in files):
         file = get_file(name)
+        if verbose:
+            print(f"Waiting for {file.display_name} to be active...")
         while file.state.name == "PROCESSING":
             if verbose:
                 print(".", end="", flush=True)
-            sleep(2)
+            sleep(4)
             file = get_file(name)
         if file.state.name != "ACTIVE":
-            print(f"File {name} is not {file.state.name}")
-            return False
-    if verbose:
-        print("...all files ready")
-    return True
+            result = False
+        else:
+            result = True
+        if verbose:
+            print(f"...pre-processing file {file.display_name} completed: '{file.state.name}'")
+    return result
 
 
 
-def analyze_single_video(this_file, timeout=200, verbose=False):
+def analyze_single_video(this_file, timeout=200):
     from json import loads
     from google.generativeai.types import HarmCategory, HarmBlockThreshold
-    from google.generativeai import GenerativeModel, configure
-    import sys
+    from google.generativeai import GenerativeModel
+    import pickle
 
     cf = init_config()
+    verbose = cf["gemini"]["verbose"]
 
-    try:
-        configure(api_key=cf["gemini"]["key"])
-    except:
-        print("Error Gemini API key (analyze_single_video). Exiting.")
-        sys.exit(0)
+    """    try:
+            configure(api_key=cf["gemini"]["key"])
+        except:
+            print("Error Gemini API key (analyze_single_video). Exiting.")
+            sys.exit(0)
+    """
+
+
+    the_item_id = this_file.display_name.split(".")[0]
+
 
     with open(cf["gemini"]["prompt"], 'r') as file:
         gemini_prompt = file.read()
@@ -924,35 +1051,53 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
                                             request_options={"timeout": timeout})
             response_received = True
         except Exception as e:
-            if verbose:
-                print(e)
+            error_string = f"   Error when trying to analyze {the_item_id}: {e}"
+            if verbose and "504" in str(e):
+                print(error_string)
+                print("   ***  504 error means that the request timed out.")
+                print("   ***  This can happen when Gemini is under heavy load, I'm guessing.")
+                print("   ***  It might take several hours for Gemini to get back to normal, so just wait.")
+                print("   "+"#"*80)
             response_received = False
 
         raw_json = {}
         if response_received == False:
             if verbose:
-                print(f"No response received")
-        elif response.candidates[0].finish_reason != 1:
+                print(f"   No response received for {the_item_id}")
+        elif response.candidates[0].finish_reason != cf["gemini_finish_reason"]["STOP"]:
             if verbose:
-                print(f"Finish reason: {response.candidates[0].finish_reason}")
+                for k in cf["gemini_finish_reason"].keys():
+                    if cf["gemini_finish_reason"][k] == response.candidates[0].finish_reason:
+                        print(f"   Finish reason: {k}")
         else:
             raw_string = response.candidates[0].content.parts[0].text
+            raw_string_fixed = raw_string.rstrip("\n")
+            raw_string_fixed = raw_string_fixed.replace("'","\'")
             if verbose:
-                print(f"Response received: {raw_string}")
+                print(f"   Response received for {the_item_id}: {raw_string_fixed}")
 
-            if raw_string.endswith("\n"):
-                raw_string = raw_string[:-1]
             try:
                 raw_json = loads(raw_string)
             except:
                 raw_json = {}
-            if not raw_string.endswith('"}'):
-                raw_string += '"}'
+                print(f"Error: couldn't convert response for {the_item_id} to JSON - A")
+            if len(raw_json)==0 and not raw_string.endswith('}'):
+                raw_string += '}'
                 try:
                     raw_json = loads(raw_string)
                 except:
                     if verbose:
-                        print("Couldn't convert response to JSON")
+                        print(f"   Error: couldn't convert response for {the_item_id} to JSON - B")
+
+
+
+            try:
+                pickle.dumps(raw_json)
+            except (pickle.PicklingError, TypeError):
+                if verbose:
+                    print(f"   Error: json for {the_item_id} could not be pickled")
+                raw_json = {}              
+                        
 
         good_strings = True
         if isinstance(raw_json, dict) and len(raw_json) > 0:
@@ -961,7 +1106,7 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
                     check_result = check_repetitive_patterns(raw_json[cc], min_pattern_length=5, min_repetitions=5, max_text_length=1000)
                     if check_result == "String too long" and cc == "text_visible_in_video":
                         if verbose:
-                            print(f"{cc} is too long - cutting and checking again.")
+                            print(f"   {cc} is too long for {the_item_id} - cutting and checking again.")
                         check_result = check_repetitive_patterns(raw_json[cc][:1000], min_pattern_length=5, min_repetitions=5, max_text_length=1000)
                     if check_result != "Good string":
                         good_strings = False
@@ -971,79 +1116,105 @@ def analyze_single_video(this_file, timeout=200, verbose=False):
         if not good_strings and little_counter < 2:
             had_enough = False
             if verbose:
-                print("1st analysis did not go well, trying again.")
+                print(f"   1st analysis of {the_item_id} did not go well, trying again.")
         elif not good_strings:
             had_enough = True
             if verbose:
-                print("2nd analysis failed, not trying again.")
+                print(f"   2nd analysis of {the_item_id} failed, not trying again.")
         else:
             had_enough = True
             if verbose:
-                print("Gemini output looks ok.")
+                print(f"   Gemini output looks ok for {the_item_id}.")
 
     return raw_json
 
 
 
+
+
+
 def gemini_analysis_from_video_filename(a_video_filename,
                                         timeout=30,
-                                        verbose=False):
+                                        verbose=False,
+                                        experiment_mode=False):
     from datetime import datetime
     from os.path import join, basename
     from json import dump
 
+    local_start_time = datetime.now()
+    this_time = datetime.now()
+    analysis_time = 0.0
+
     the_item_id = int(basename(a_video_filename).split(".")[0])
 
-    if verbose:
-        print(f"Uploading video {the_item_id} to Gemini...")
+
     files_for_gemini = [
         upload_to_gemini(a_video_filename, 
-                         mime_type="video/mp4", 
-                         verbose=verbose),
+                         mime_type="video/mp4"),
     ]
     files_for_gemini = [gf for gf in files_for_gemini if not gf is None] # remove any None values, i.e. failed uploads
 
+
     if len(files_for_gemini) > 0:
+        if verbose:
+            print(f"Time to complete {the_item_id} upload: {(datetime.now() - this_time).total_seconds():.1f}s")
+        this_time = datetime.now()
 
-        file_is_ready_for_analysis = wait_for_files_active(files_for_gemini, verbose=verbose)
+        file_is_ready_for_analysis = wait_for_files_active(files_for_gemini)
 
-        analysis_start_time = datetime.now()
+        if file_is_ready_for_analysis:
+            if verbose:
+                print(f"Time to prepare {the_item_id}for analysis: {(datetime.now() - this_time).total_seconds():.1f}s")
+            this_time = datetime.now()
+            analysis_start_time = datetime.now()
 
-        if file_is_ready_for_analysis:        
             if verbose:
                 print(f"Analyzing video {the_item_id}...")
             fine_video_analysis_results = analyze_single_video(files_for_gemini[0], 
-                                                          timeout=timeout, 
-                                                          verbose=verbose)
+                                                          timeout=timeout)
+            analysis_time = (datetime.now() - analysis_start_time).total_seconds()
+            if verbose:
+                if len(fine_video_analysis_results) > 0:
+                    print(f"...analysis of {the_item_id} successful ({analysis_time:.1f}s)")
+                else:
+                    print(f"...analysis of {the_item_id} failed")
         else:
             if verbose:
-                print(f"File prep for Gemini analysis failed: {the_item_id}")
+                print(f"ERROR (Gemini): Pre-precessing of {the_item_id} failed, no analysis was made")
             fine_video_analysis_results = {}
     else:
         if verbose:
-            print(f"File was not uploaded to Gemini, no analysis was made:  {the_item_id}")
+            print(f"ERROR (Gemini): Uploading of {the_item_id} to Gemini failed, no analysis was made")
         fine_video_analysis_results = {}
 
     if len(fine_video_analysis_results) > 0:
-        print(f"{the_item_id} Gemini analysis successful")
+        fine_video_analysis_results["item_id"] = the_item_id
+        fine_video_analysis_results["analysis_ts"] = int(datetime.now().timestamp())
+
+        if not experiment_mode:
+            # Save the result at this stage for this single video as a precaution if it all blows up
+            temp_fn = join(temp_path(f"temp_gemini_results_{fine_video_analysis_results['item_id']}_{fine_video_analysis_results['analysis_ts']}.json"))
+            if verbose:
+                print(f"Saving Gemini analysis of {the_item_id} to temp folder")
+        
+            with open(temp_fn, 'w') as file:
+                dump(fine_video_analysis_results,file)
+    
+
+
+    if len(fine_video_analysis_results) == 0:
+        the_outcome = "FAILED"
     else:
-        print(f"{the_item_id} Gemini analysis failed")
+        the_outcome = "OK"
 
+    tutti_time = (datetime.now() - local_start_time).total_seconds()
 
-    analysis_time = (datetime.now() - analysis_start_time).total_seconds()
-
-    
-    fine_video_analysis_results["item_id"] = the_item_id
-    fine_video_analysis_results["analysis_time"] = analysis_time
-    fine_video_analysis_results["analysis_ts"] = int(datetime.now().timestamp())
-
-    # Save the result at this stage for this single video as a precaution if it all blows up
-    temp_fn = join(temp_path(f"temp_gemini_results_{fine_video_analysis_results["item_id"]}_{fine_video_analysis_results["analysis_ts"]}.json"))
     if verbose:
-        print(f"Saving temp Gemini results to {temp_fn}")
-    with open(temp_fn, 'w') as file:
-        dump(fine_video_analysis_results,file)
-    
+        print("\n\n\n")
+    else:
+        print(f"Gemini analysis of {the_item_id} done ({tutti_time:.1f}s): {the_outcome}")
+
+
     return fine_video_analysis_results
 
 
@@ -1051,21 +1222,25 @@ def gemini_analysis_from_video_filename(a_video_filename,
 
 
 
-def gemini_video_process(the_video_file_w_number, verbose=False):
+def gemini_video_process(the_video_file_w_number):
     from datetime import datetime
     from os import remove
 
     the_number = the_video_file_w_number[0]
     the_video_filename = the_video_file_w_number[1]
     cf = the_video_file_w_number[2]
+    verbose = cf["gemini"]["verbose"]
+    timeout = cf["gemini"]["timeout"]
 
     tutti_start_time = datetime.now()
-    timeout = cf["gemini"]["timeout"]
+    if verbose:
+        print(f"{the_number:04} {the_video_filename.split('.')[0]} - started at {tutti_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
 
     main_media_storage = init_media_storage(verbose=verbose)
 
     if verbose:
-        print("Loading video object...")
+        print("Loading video from the media storage to the temp folder...")
     load_blob_from_storage(main_media_storage, 
                   the_video_filename,
                   prefix=cf["media_storage"]["video_prefix"], 
@@ -1073,21 +1248,29 @@ def gemini_video_process(the_video_file_w_number, verbose=False):
 
     video_analysis_results = gemini_analysis_from_video_filename(temp_path(the_video_filename),
                                                                  timeout=timeout,
-                                                                 verbose=verbose)
+                                                                 verbose=verbose,
+                                                                 experiment_mode=False)
 
-    tutti_time = (datetime.now() - tutti_start_time).total_seconds()
-    video_analysis_results["processing_time"] = tutti_time
+    """    if len(video_analysis_results) == 0:
+            the_outcome = "FAILED"
+        else:
+            the_outcome = "OK"
 
-    print(f"{the_number:04} {the_video_filename.split('.')[0]} done. Gemini analysis: {video_analysis_results["analysis_time"]:.1f}s. Total time: {tutti_time:.1f}s")
+        tutti_time = (datetime.now() - tutti_start_time).total_seconds()
+
+        if verbose:
+            print("\n\n\n")
+        else:
+            print(f"{the_number:04} Gemini analysis of {the_video_filename.split('.')[0]} done ({tutti_time:.1f}s): {the_outcome}")
+    """
+
 
     if verbose:
-        print("Deleting files...")
+        print(f"Deleting {the_video_filename} from temp folder...")
     remove(temp_path(the_video_filename))
 
+
     return video_analysis_results
-
-
-
 
 
 

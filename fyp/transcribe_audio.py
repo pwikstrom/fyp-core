@@ -136,7 +136,7 @@ def transcribe_audio(some_items_to_transcribe=None,
         if (i+1) % 100 == 0:
             with open(cf["paths"]["audio_transcription"], "w") as json_file:
                 json.dump(audio_transcriptions, json_file)
-            print(f"\n{len(audio_transcriptions):,} audio transcriptions saved as {cf["paths"]["audio_transcription"]}\n")
+            print(f"\n{len(audio_transcriptions):,} audio transcriptions saved as {cf['paths']['audio_transcription']}\n")
 
     # end of the loop over the audio files to transcribe
 
@@ -158,7 +158,7 @@ def transcribe_audio(some_items_to_transcribe=None,
         with open(cf["paths"]["audio_transcription"], "w") as json_file:
             json.dump(audio_transcriptions, json_file)
 
-        print(f"\n{len(audio_transcriptions):,} audio transcriptions saved as {cf["paths"]["audio_transcription"]}\n")
+        print(f"\n{len(audio_transcriptions):,} audio transcriptions saved as {cf['paths']['audio_transcription']}\n")
 
     print("Done\n"+"*"*80+"\n")
 

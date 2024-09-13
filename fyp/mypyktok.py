@@ -2,18 +2,14 @@
 """
 Script Name: 
 Description: 
-Author: freelon
+Author: Patrik based on PykTok code by freelon
 Date: Thu Jul 14 14:06:01 2022
 """
 
 import browser_cookie3
-from bs4 import BeautifulSoup
-from datetime import datetime
-import json
-import os
-import pandas as pd
-import re
-import requests
+
+
+
 
 
 headers = {'Accept-Encoding': 'gzip, deflate, sdch',
@@ -23,11 +19,11 @@ headers = {'Accept-Encoding': 'gzip, deflate, sdch',
            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
            'Cache-Control': 'max-age=0',
            'Connection': 'keep-alive'}
-#url_regex = r'(?<=\.com/)(.+?)(?=\?|$)'
-#runsb_rec = 'We strongly recommend you run \'specify_browser\' first, which will allow you to run pyktok\'s functions without using the browser_name parameter every time. \'specify_browser\' takes as its sole argument a string representing a browser installed on your system, e.g. "chrome," "firefox," "edge," etc.'
 runsb_err = 'No browser defined for cookie extraction. We strongly recommend you run \'specify_browser\', which takes as its sole argument a string representing a browser installed on your system, e.g. "chrome," "firefox," "edge," etc.'
 
-#print(runsb_rec)
+
+
+
 
 
 class BrowserNotSpecifiedError(Exception):
@@ -35,74 +31,64 @@ class BrowserNotSpecifiedError(Exception):
         super().__init__(runsb_err)
 
 
+
+
+
 def specify_browser(browser):
     global cookies
     cookies = getattr(browser_cookie3, browser)(domain_name='www.tiktok.com')
 
 
-def deduplicate_metadata(metadata_fn, video_df, dedup_field='video_id'):
-    if os.path.exists(metadata_fn):
-        metadata = pd.read_csv(metadata_fn, keep_default_na=False)
-        combined_data = pd.concat([metadata, video_df])
-        combined_data[dedup_field] = combined_data[dedup_field].astype(str)
-    else:
-        combined_data = video_df
-    return combined_data.drop_duplicates(dedup_field)
 
 
 
 
-pyk_data_defaults = {
-    'desc': "",
-    'createTime': "no default", # the type is datetime, but that doesn't work for me but aok, since I'm not using it anyway
-    'item_id': 0,
-    'video_duration': 0,
-    'author_id': 0,
-    'author_uniqueId': "",
-    'author_nickname': "",
-    'author_signature': "",
-    'author_verified': False,
-    'music_id': 0,
-    'music_title': "",
-    'music_authorName': "",
-    'music_album': "",
-    'music_original': False,
-    'music_duration': 0,
-    'playlistId': 0,
-    'stats_diggCount': -1,
-    'stats_commentCount': -1,
-    'stats_playCount': -1,
-    'stats_collectCount': -1,
-    'stats_shareCount': -1,
-    'anchors': "",
-    'challenges': "",
-    'poi_name': "",
-    'poi_address': "",
-    'poi_city': "",
-    'poi_province': "",
-    'poi_country': "",
-    'IsAigc': False,
-    'AIGCDescription': "",
-    'aigcLabelType': "",
-    'isAd': False,
-    'video_cover': "",
-    'video_downloaded': False,
-    'audio_extracted': False,
-    'cover_downloaded': False,
-    'do_not_modify': True,
-    'last_modified': "no default" # the type is datetime, but that doesn't work for me but aok, since I'm not using it anyway
-}
-
-
-
-"""
-This is Patrik's version of this function. The original is on freelon's Github repo
-"""
 def generate_data_row(item_struct):
     from copy import copy
-    from pandas import DataFrame
+    from pandas import DataFrame, to_datetime
+    from datetime import datetime
 
 
+    pyk_data_defaults = {
+        'desc': "",
+        'createTime': "no default", # the type is datetime, but that doesn't work for me but aok, since I'm not using it anyway
+        'item_id': 0,
+        'video_duration': 0,
+        'author_id': 0,
+        'author_uniqueId': "",
+        'author_nickname': "",
+        'author_signature': "",
+        'author_verified': False,
+        'music_id': 0,
+        'music_title': "",
+        'music_authorName': "",
+        'music_album': "",
+        'music_original': False,
+        'music_duration': 0,
+        'playlistId': 0,
+        'stats_diggCount': -1,
+        'stats_commentCount': -1,
+        'stats_playCount': -1,
+        'stats_collectCount': -1,
+        'stats_shareCount': -1,
+        'anchors': "",
+        'challenges': "",
+        'poi_name': "",
+        'poi_address': "",
+        'poi_city': "",
+        'poi_province': "",
+        'poi_country': "",
+        'IsAigc': False,
+        'AIGCDescription': "",
+        'aigcLabelType': "",
+        'isAd': False,
+        'video_cover': "",
+        'video_downloaded': False,
+        'audio_extracted': False,
+        'cover_downloaded': False,
+        'do_not_modify': True,
+        'last_modified': "no default" # the type is datetime, but that doesn't work for me but aok, since I'm not using it anyway
+    }
 
     item_struct["item_id"] = int(item_struct["id"])
 
@@ -149,12 +135,10 @@ def generate_data_row(item_struct):
             pyk_data_types[dh] = type(pyk_data_defaults[dh])
             if dh not in item_struct.keys():
                 item_struct[dh] = pyk_data_defaults[dh]
-    print()
-
 
     pyk_data = DataFrame.from_dict(item_struct,orient="index").T
-    pyk_data["createTime"] = pd.to_datetime(pyk_data["createTime"])
-    pyk_data["last_modified"] = pd.to_datetime(pyk_data["last_modified"])
+    pyk_data["createTime"] = to_datetime(pyk_data["createTime"])
+    pyk_data["last_modified"] = to_datetime(pyk_data["last_modified"])
     pyk_data = pyk_data[list(pyk_data_defaults.keys())]
     pyk_data = pyk_data.astype(pyk_data_types)
 
@@ -164,165 +148,115 @@ def generate_data_row(item_struct):
 
 
 
-def get_tiktok_raw_data(a_url, browser_name=None):
+def alt_get_tiktok_json(video_url,
+                        browser_name=None,
+                        verbose=False):
+    from bs4 import BeautifulSoup
+    from requests import get as requests_get
+    from json import loads
+    from time import sleep
+
     if 'cookies' not in globals() and browser_name is None:
         raise BrowserNotSpecifiedError
     global cookies
     if browser_name is not None:
         cookies = getattr(browser_cookie3, browser_name)(
             domain_name='www.tiktok.com')
-    tt = requests.get(a_url,
-                      headers=headers,
-                      cookies=cookies,
-                      timeout=20)
-    # retain any new cookies that got set in this request
-    cookies = tt.cookies
-    soup = BeautifulSoup(tt.text, "html.parser")
-    return soup
 
-
-def get_tiktok_json(video_url, browser_name=None):
-    if 'cookies' not in globals() and browser_name is None:
-        raise BrowserNotSpecifiedError
-    global cookies
-    if browser_name is not None:
-        cookies = getattr(browser_cookie3, browser_name)(
-            domain_name='www.tiktok.com')
-    tt = requests.get(video_url,
-                      headers=headers,
-                      cookies=cookies,
-                      timeout=20)
-    # retain any new cookies that got set in this request
-    cookies = tt.cookies
-    soup = BeautifulSoup(tt.text, "html.parser")
-    tt_script = soup.find('script', attrs={'id': "SIGI_STATE"})
     try:
-        tt_json = json.loads(tt_script.string)
-    except AttributeError:
-        return
-    return tt_json
-
-
-
-def alt_get_tiktok_json(video_url, browser_name=None):
-    if 'cookies' not in globals() and browser_name is None:
-        raise BrowserNotSpecifiedError
-    global cookies
-    if browser_name is not None:
-        cookies = getattr(browser_cookie3, browser_name)(
-            domain_name='www.tiktok.com')
-    tt = requests.get(video_url,
-                      headers=headers,
-                      cookies=cookies,
-                      timeout=20)
+        tt = requests_get(video_url,
+                          headers=headers,
+                          cookies=cookies,
+                          timeout=20)
+    except Exception as e:
+        if verbose:
+            print(f"ERROR (PykTok)-1", end="  |  ",flush=True)
+            print(f". Failed to download the json of {video_url}. Sleeping for 3s and then returning None.")
+        sleep(3)
+        return None
+    
     # retain any new cookies that got set in this request
     cookies = tt.cookies
     soup = BeautifulSoup(tt.text, "html.parser")
     tt_script = soup.find(
         'script', attrs={'id': "__UNIVERSAL_DATA_FOR_REHYDRATION__"})
-    try:
-        tt_json = json.loads(tt_script.string)
-    except AttributeError:
-        #print("The function encountered a downstream error and did not deliver any data, which happens periodically for various reasons. Please try again later.")
-        return
+    
+    tt_json = loads(tt_script.string)
+    
     return tt_json
 
 
 
 def save_tiktok(video_url,
                 save_video=True,
-#                metadata_fn='',
                 browser_name=None,
-                save_path=""):
+                save_path="",
+                verbose=False):
     
     from os.path import join
-    fgh = join("data", save_path)
-
+    from pandas import DataFrame
+    from requests import get as requests_get
+    from time import sleep
 
     if 'cookies' not in globals() and browser_name is None:
         raise BrowserNotSpecifiedError
-    #if save_video == False and metadata_fn == '':
-    #    print('Since save_video and metadata_fn are both False/blank, the program did nothing.')
-    #    return
-
-    tt_json = get_tiktok_json(video_url, browser_name)
-
-    if False and tt_json is not None:
-        video_id = list(tt_json['ItemModule'].keys())[0]
-
-        if save_video == True:
-            regex_url = re.findall(url_regex, video_url)[0]
-            if 'imagePost' in tt_json['ItemModule'][video_id]:
-                slidecount = 1
-                for slide in tt_json['ItemModule'][video_id]['imagePost']['images']:
-                    video_fn = regex_url.replace(
-                        '/', '_') + '_slide_' + str(slidecount) + '.jpeg'
-                    tt_video_url = slide['imageURL']['urlList'][0]
-                    headers['referer'] = 'https://www.tiktok.com/'
-                    # include cookies with the video request
-                    #print(tt_video_url)
-                    tt_video = requests.get(
-                        tt_video_url, allow_redirects=True, headers=headers, cookies=cookies)
-                    with open(join(save_path,video_fn), 'wb') as fn:
-                        fn.write(tt_video.content)
-                    slidecount += 1
-            else:
-                regex_url = re.findall(url_regex, video_url)[0]
-                video_fn = regex_url.replace('/', '_') + '.mp4'
-                tt_video_url = tt_json['ItemModule'][video_id]['video']['downloadAddr']
-                headers['referer'] = 'https://www.tiktok.com/'
-                # include cookies with the video request
-                #print(tt_video_url)
-                tt_video = requests.get(
-                    tt_video_url, allow_redirects=True, headers=headers, cookies=cookies)
-            with open(join(save_path,video_fn), 'wb') as fn:
-                fn.write(tt_video.content)
-
-        data_slot = tt_json['ItemModule'][video_id]
-        data_row = generate_data_row(data_slot)
-        try:
-            user_id = list(tt_json['UserModule']['users'].keys())[0]
-            user_verified = tt_json['UserModule']['users'][user_id]['verified']
-            if user_verified == None:
-                user_verified = False
-            data_row.loc[0, "author_verified"] = user_verified
-        except Exception:
-            pass
 
     else:
-        tt_json = alt_get_tiktok_json(video_url, browser_name)
+        try:
+            tt_json = alt_get_tiktok_json(video_url,
+                                          browser_name=browser_name,
+                                          verbose=verbose)
+        except Exception as e:
+            if verbose:
+                print(f"ERROR (PykTok)-2", end="  |  ",flush=True)
+                print(f". Could not retrieve a json for {video_url}.")
+            return DataFrame()
+        
         if tt_json:
+            try:
+                data_slot = tt_json["__DEFAULT_SCOPE__"]['webapp.video-detail']['itemInfo']['itemStruct']
+                data_row = generate_data_row(data_slot)
+                data_row['video_downloaded'] = False
+            except Exception as e:
+                if verbose:
+                    print(f"ERROR (PykTok)-3", end="  |  ",flush=True)
+                    print(f". 'itemStruct' missing or corrupted in the json for {video_url}")
+                return DataFrame()
             if save_video:
-                #regex_url = re.findall(url_regex, video_url)[0]
-                #video_fn = regex_url.replace('/', '_') + '.mp4'
-                if video_url[-1] == '/':
-                    video_fn = video_url.split("/")[-2] + ".mp4"
-                else:
-                    video_fn = video_url.split("/")[-1] + ".mp4"
+                video_id = video_url.rstrip('/').split('/')[-1]
+                video_fn = f"{video_id}.mp4"
 
                 if len(tt_json["__DEFAULT_SCOPE__"]['webapp.video-detail']['itemInfo']['itemStruct']['video']) == 0:
-                    print("The video metadata came back empty. Returning None.")
-                    return
-                
-                tt_video_url = tt_json["__DEFAULT_SCOPE__"]['webapp.video-detail']['itemInfo']['itemStruct']['video']['downloadAddr']
-                headers['referer'] = 'https://www.tiktok.com/'
-                # include cookies with the video request
-                #print("hejsan")
-                tt_video = requests.get(
-                    tt_video_url, allow_redirects=True, headers=headers, cookies=cookies)
-                with open(join(save_path,video_fn), 'wb') as fn:
-                    fn.write(tt_video.content)
+                    if verbose:
+                        print(f"ERROR (PykTok)-4", end="  |  ",flush=True)
+                        print(f". The video metadata in the json for {video_url} came back empty.")
+                    return DataFrame()
 
-            data_slot = tt_json["__DEFAULT_SCOPE__"]['webapp.video-detail']['itemInfo']['itemStruct']
-            data_row = generate_data_row(data_slot)
-            try:
-                #user_id = list(tt_json['UserModule']['users'].keys())[0]
-                user_verified = tt_json["__DEFAULT_SCOPE__"]['webapp.video-detail']['itemInfo']['itemStruct']['author']
-                if user_verified == None:
-                    user_verified = False
-                data_row.loc[0, "author_verified"] = user_verified
-            except Exception:
-                pass
+                tt_download_video_url = tt_json["__DEFAULT_SCOPE__"]['webapp.video-detail']['itemInfo']['itemStruct']['video']['downloadAddr']
+                if len(tt_download_video_url) == 0 or tt_download_video_url is None or not tt_download_video_url.startswith("http"):
+                    if verbose:
+                        print(f"WARNING (PykTok)-1", end="  |  ",flush=True)
+                        print(f". The download url in the json for {video_url} is empty or corrupted. Returning the metadata with video_downloaded = False.")
+                    return data_row
+
+                try:
+                    headers['referer'] = 'https://www.tiktok.com/'
+                    tt_video = requests_get(
+                        tt_download_video_url, allow_redirects=True, headers=headers, cookies=cookies)
+                    with open(join(save_path,video_fn), 'wb') as fn:
+                        fn.write(tt_video.content)
+                    data_row['video_downloaded'] = True
+                except Exception as e:
+                    if verbose:
+                        print(f"WARNING (PykTok)-2", end="  |  ",flush=True)
+                        print(f". Failed to download the video of {video_url}. Sleeping for 3s and then returning the metadata with video_downloaded = False.")
+                    sleep(3)
+                    return data_row
+
         else:
-            data_row = pd.DataFrame()
+            if verbose:
+                print(f"ERROR (PykTok)-5", end="  |  ",flush=True)
+                print(f". Could not retrieve a json for {video_url}.")
+            return DataFrame()
+    
     return data_row

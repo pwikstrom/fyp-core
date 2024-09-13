@@ -12,8 +12,7 @@ import fyp.fyp_main as fyp
 
 
 def analyze_videos(some_videos_to_analyze=None,
-                    experiment_mode=False,
-                    verbose=False):
+                    experiment_mode=False):
     """This function uses Gemini video analysis.
 
     Parameters:
@@ -59,6 +58,7 @@ def analyze_videos(some_videos_to_analyze=None,
         all_results_df.analysis_ts = all_results_df.analysis_ts.map(lambda x: int(x) if type(x)==float or type(x)==int else int(x.timestamp()))
         all_results_df = all_results_df.sort_values("analysis_ts").drop_duplicates(subset=["item_id"],keep="last")
         all_results_df.item_id = all_results_df.item_id.astype(int)
+        all_results_df.drop(columns=["analysis_time","processing_time"], inplace=True, errors="ignore")
         print(f"Found {len(all_results_df):,} previous Gemini video analyses on disk.")
         analyzed_item_ids = all_results_df.item_id.unique()
     else:
@@ -76,15 +76,15 @@ def analyze_videos(some_videos_to_analyze=None,
     # 3. some_videos_to_analyze is None. In that case, all videos that have not been analyzed yet are analyzed.
     if isinstance(some_videos_to_analyze, list) and len(some_videos_to_analyze)>0:
         videos_to_analyze = list(set(some_videos_to_analyze) & set(videos_available_for_analysis))
-        print(f"Selecting {len(videos_to_analyze):,} available videos for analysis from a list of item IDs (regardless if they already have been analysed or not).")
+        print(f"Analysing the {len(videos_to_analyze):,} videos provided as a list of item IDs (regardless if they already have been analysed or not).")
     elif isinstance(some_videos_to_analyze, int) and some_videos_to_analyze>0:
         videos_to_analyze = list(set(videos_available_for_analysis) - set(analyzed_item_ids))
         if some_videos_to_analyze>len(videos_to_analyze):
             some_videos_to_analyze = len(videos_to_analyze)
         videos_to_analyze = random.choice(videos_to_analyze, size=some_videos_to_analyze, replace=False)
-        print(f"Selecting {some_videos_to_analyze:,} random available videos for analysis (that haven't already been analyzed).")
+        print(f"Analysing {some_videos_to_analyze:,} random videos available in the storage (that haven't already been analyzed).")
     else:
-        print(f"Selecting all available videos for analysis (that haven't already been analyzed).") 
+        print(f"Analysing all available videos in the storage (that haven't already been analyzed).") 
         videos_to_analyze = list(set(videos_available_for_analysis) - set(analyzed_item_ids))
 
     if len(videos_to_analyze)==0:
@@ -103,6 +103,9 @@ def analyze_videos(some_videos_to_analyze=None,
     else:
         print()
 
+    if experiment_mode:
+        print("\n\n")
+
     # make a list of 3-element-lists containing the video file number, the filename and the config-dict. 
     # This is the argument package that is sent with each video to the gemini_video_process function.
     arg_list_for_gemini_video_process = [[i+1, f"{vf}.mp4", cf] for i,vf in enumerate(videos_to_analyze)]
@@ -114,8 +117,13 @@ def analyze_videos(some_videos_to_analyze=None,
     pool.join()
 
     # Convert to a DataFrame
-    some_results_df = pd.DataFrame(results)
-    some_results_df = some_results_df.dropna()
+
+    results = [r for r in results if len(r)>0]
+    if len(results) > 0:
+        some_results_df = pd.DataFrame(results)
+        some_results_df = some_results_df.dropna()
+    else:
+        some_results_df = pd.DataFrame()
 
 
 
@@ -123,17 +131,16 @@ def analyze_videos(some_videos_to_analyze=None,
 
 
     end_time = datetime.now()
-    print(f"{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini video analysis completed in {fyp.pretty_str_seconds((end_time-start_time).total_seconds())}.")
+    print(f"\n{end_time.strftime('%Y-%m-%d %H:%M:%S')}: Gemini video analysis completed in {fyp.pretty_str_seconds((end_time-start_time).total_seconds())}.")
+    print(f"Shape of the new results dataframe: {some_results_df.shape}.\nShape of the old results dataframe: {all_results_df.shape}.")
 
-    if len(some_results_df)>0:
+    if len(some_results_df.columns)>0 and (len(all_results_df)==0 or len(some_results_df.columns) == len(all_results_df.columns)):
         print(f"{len(some_results_df)} videos successfully analysed.")
     else:
-        print("No new videos processed.")
+        print("No new videos successfully processed.")
         print("Exiting.\n"+"*"*80+"\n")
         return
     
-    print(f"Shape of the new results dataframe: {some_results_df.shape}. Shape of the good old dataframe: {all_results_df.shape}\n")
-
     # merge the new results with the existing ones
     all_results_df = pd.concat([all_results_df,some_results_df])
 
@@ -146,7 +153,7 @@ def analyze_videos(some_videos_to_analyze=None,
 
         all_results_df.analysis_ts = all_results_df.analysis_ts.map(lambda x: int(x) if type(x)==float or type(x)==int else int(x.timestamp()))
         all_results_df = all_results_df.dropna().sort_values("analysis_ts").drop_duplicates(subset=["item_id"], keep="last")
-        print(f"Saving the combined old & new results ({len(all_results_df)} items) to {cf["paths"]["gemini_video_analysis"]}")
+        print(f"Saving the combined old & new results ({len(all_results_df)} items) to {cf['paths']['gemini_video_analysis']}")
         all_results_df.to_pickle(cf["paths"]["gemini_video_analysis"])
 
         print("Done\n"+"*"*80+"\n")

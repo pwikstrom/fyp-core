@@ -32,52 +32,133 @@ def organize_results(verbose=False):
     print(f"(1/4) Cleaning up baseline logs (if logs are available).")
 
     #item_list = []
-    if exists(cf["paths"]["zeeschuimer_raw"]):
-        print("   Baseline logs available. Loading...")
-        baseline_df = pd.concat([pd.read_pickle(join(cf["paths"]["zeeschuimer_refined"],fn)) for fn in listdir(cf["paths"]["zeeschuimer_refined"]) if fn.endswith(".pkl")])
-        if verbose:
-            print(fyp.get_baseline_info_as_string(baseline_df))
+    if exists(cf["paths"]["zeeschuimer_refined"]):
+        baseline_pickle_files = [fn for fn in listdir(cf["paths"]["zeeschuimer_refined"]) if fn.endswith(".pkl")]
+        if len(baseline_pickle_files)>0:
+            print("   Baseline logs available. Loading...")
+            baseline_df = pd.concat([pd.read_pickle(join(cf["paths"]["zeeschuimer_refined"],fn)) for fn in baseline_pickle_files])
+            if verbose:
+                print(fyp.get_baseline_info_as_string(baseline_df))
 
-        relevant_columns = ['item_id','timestamp_collected','source_platform_url','id',
-        'data.author.id','data.author.nickname','data.author.signature','data.author.uniqueId','data.author.verified',
-        'data.authorStats.diggCount','data.authorStats.followerCount','data.authorStats.followingCount','data.authorStats.heart','data.authorStats.heartCount','data.authorStats.videoCount',
-        'data.challenges','data.digged','data.diversificationId','data.duetDisplay','data.duetEnabled','data.id',
-        'data.music.authorName','data.music.duration','data.music.id','data.music.original','data.music.title',
-        'data.officalItem','data.originalItem',
-        'data.poi.address','data.poi.category','data.poi.city','data.poi.cityCode','data.poi.countryCode','data.poi.fatherPoiName',
-        'data.poi.id','data.poi.name','data.poi.ttTypeNameMedium','data.poi.ttTypeNameSuper','data.poi.ttTypeNameTiny',
-        'data.stats.collectCount','data.stats.commentCount','data.stats.diggCount','data.stats.playCount','data.stats.shareCount',
-        'data.statsV2.collectCount','data.statsV2.commentCount','data.statsV2.diggCount','data.statsV2.playCount','data.statsV2.repostCount','data.statsV2.shareCount',
-        'data.stickersOnItem','data.anchors','data.effectStickers','data.author.roomId','data.warnInfo',
-        'source_url.device_id','source_url.region','source_url.tz_name','source_url.categoryType','log_script','label']
-        relevant_columns = [c for c in relevant_columns if c in baseline_df.columns]
+            relevant_columns = ['item_id','timestamp_collected','source_platform_url','id',
+            'data.author.id','data.author.nickname','data.author.signature','data.author.uniqueId','data.author.verified',
+            'data.authorStats.diggCount','data.authorStats.followerCount','data.authorStats.followingCount','data.authorStats.heart','data.authorStats.heartCount','data.authorStats.videoCount',
+            'data.challenges','data.digged','data.diversificationId','data.duetDisplay','data.duetEnabled','data.id',
+            'data.music.authorName','data.music.duration','data.music.id','data.music.original','data.music.title',
+            'data.officalItem','data.originalItem',
+            'data.poi.address','data.poi.category','data.poi.city','data.poi.cityCode','data.poi.countryCode','data.poi.fatherPoiName',
+            'data.poi.id','data.poi.name','data.poi.ttTypeNameMedium','data.poi.ttTypeNameSuper','data.poi.ttTypeNameTiny',
+            'data.stats.collectCount','data.stats.commentCount','data.stats.diggCount','data.stats.playCount','data.stats.shareCount',
+            'data.statsV2.collectCount','data.statsV2.commentCount','data.statsV2.diggCount','data.statsV2.playCount','data.statsV2.repostCount','data.statsV2.shareCount',
+            'data.stickersOnItem','data.anchors','data.effectStickers','data.author.roomId','data.warnInfo',
+            'source_url.device_id','source_url.region','source_url.tz_name','source_url.categoryType','log_script','label']
+            relevant_columns = [c for c in relevant_columns if c in baseline_df.columns]
 
-        baseline_df = copy(baseline_df[relevant_columns])
-        baseline_df.to_csv(cf["paths"]["baseline"],index=False)
+            baseline_df = copy(baseline_df[relevant_columns])
+            baseline_df.to_csv(cf["paths"]["baseline"],index=False)
 
-        print(f"   {len(baseline_df):,} items in the baseline logs.")
-    else:
-        print(f"   No baseline logs available.")
-
-
-
-
+            print(f"   {len(baseline_df):,} items in the baseline logs.")
+        else:
+            print(f"   No baseline logs available.")
 
 
-    print(f"(2/4) Loading audio transcriptions and results from Gemini video analysis - merging with the PykTok metadata.")
+
+
+
+    print(f"(2/4) Generating a single CSV with all data donation packages.")
     pyk_metadata = pd.read_pickle(cf["paths"]["pyk_metadata"])
 
-    gemini_analysis = pd.read_pickle(cf["paths"]["gemini_video_analysis"])
-    gemini_analysis.analysis_ts = gemini_analysis.analysis_ts.map(lambda x: int(x) if type(x)==float or type(x)==int else int(x.timestamp()))
-    gemini_analysis = gemini_analysis.sort_values("analysis_ts").drop_duplicates(subset=["item_id"],keep="last")
+    ddp_activities = []
+    if cf["paths"]["ddp"] != "":
+        # load all the data donation packages
+        print(f"   Loading all items from data donation packages...")
+        for u, j, k in walk(cf["paths"]["ddp"]):
+            for g in k:
+                if g.endswith(".json"):
+                    filename = join(u, g)
+                    ddp_activities += [fyp.get_ddp_activities(filename)]
+                    
+        if len(ddp_activities)>0:
+            ddp_activities = pd.concat(ddp_activities)
     
-    gemini_analysis.drop(columns=["analysis_time","processing_time","analysis_ts"],inplace=True, errors="ignore")
+            # generate item IDs from the data donation packages
+            ddp_items = []
+            for u in ddp_activities.Link:
+                if isinstance(u,str) and "/video/" in u:
+                    new_item = u.split("/video/")[1]
+                    if new_item[-1] == "/":
+                        new_item = new_item[:-1]
+                    ddp_items.append(int(new_item))
+                else:
+                    ddp_items.append(0)
+            ddp_activities["item_id"] = ddp_items
+            ddp_activities.item_id = ddp_activities.item_id.astype(int)
 
-    gemini_analysis.columns = ["g_"+c if c != "item_id" else c for c in gemini_analysis.columns]
+            
+            pyk_metadata.item_id = pyk_metadata.item_id.astype(int)
+
+            print(f"   {len(ddp_activities):,} items in the DDP logs.")
+
+            # merge the data donation packages with the static metadata
+            ddp_expanded = pd.merge(left=ddp_activities,
+                                    right=pyk_metadata[["item_id","desc", "author_nickname","author_signature"]],
+                                    on="item_id",
+                                    how="left")
+            
+            # enable the user to drop some data donation packages based on words they don't want to include
+            # NOTE - this is a bit of an experiment. It needs to be developed in a way so that a user can filter out
+            # items locally before they download the package to the research team.
+            check_ddp_cols = ["UserName","SearchTerm","Comment","desc","author_nickname","author_signature"]
+            drop_words = input("   Enter words to drop from data donation packages separated by commas: ")
+            drop_words = drop_words.replace("\n"," ")
+            drop_words_list = list(map(lambda x:x.strip(), drop_words.split(",")))
+            drop_words_list = [w for w in drop_words_list if w != ""]
+
+            if verbose:
+                print(drop_words_list)
+
+            # create a DF mask based on if the words are in the data donation packages
+            ok_for_donation = []
+            for _,t in ddp_expanded[["item_id"]+check_ddp_cols].iterrows():
+                w = " ".join([s.replace("\n"," ") for s in t[check_ddp_cols] if isinstance(s,str)]).lower().strip()
+
+                okidoke = not any([q.lower() in w for q in drop_words_list])
+                if verbose and not okidoke:
+                    print(t.desc)
+
+                ok_for_donation += [okidoke]
+
+            # apply the mask to the data donation packages 
+            print(f"   {sum(ok_for_donation):,} items are ok for donation.")
+            ddp_activities = ddp_activities[ok_for_donation]
+
+            # save the data donation packages
+            print(f"   {len(ddp_activities):,} items in the DDP logs.")
+            print(f"   Saving.")
+            ddp_activities.to_csv(cf["paths"]["data_donations"],index=False)
+    
+
+
+
+
+
+    print(f"(3/4) Loading audio transcriptions and results from Gemini video analysis - merging with the PykTok metadata.")
+    if exists(cf["paths"]["gemini_video_analysis"]):
+        gemini_analysis = pd.read_pickle(cf["paths"]["gemini_video_analysis"])
+        gemini_analysis.analysis_ts = gemini_analysis.analysis_ts.map(lambda x: int(x) if type(x)==float or type(x)==int else int(x.timestamp()))
+        gemini_analysis = gemini_analysis.sort_values("analysis_ts").drop_duplicates(subset=["item_id"],keep="last")
+        
+        gemini_analysis.drop(columns=["analysis_time","processing_time","analysis_ts"],inplace=True, errors="ignore")
+
+        gemini_analysis.columns = ["g_"+c if c != "item_id" else c for c in gemini_analysis.columns]
+
+        all_static_metadata = pd.merge(left=pyk_metadata, right=gemini_analysis, on="item_id", how="inner")
+
+    else:
+        gemini_analysis = []
+        all_static_metadata = pyk_metadata
 
     print(f"   {len(gemini_analysis)} videos have Gemini analysis.")
-
-    all_static_metadata = pd.merge(left=pyk_metadata, right=gemini_analysis, on="item_id", how="inner")
 
     # add the audio transcriptions to the metadata
     audio_transcriptions = {}
@@ -112,74 +193,9 @@ def organize_results(verbose=False):
 
 
 
-    print(f"   Saving static metadata {len(all_static_metadata):,} videos as {cf["paths"]["all_static_metadata"]}")
+    print(f"   Saving static metadata {len(all_static_metadata):,} videos as {cf['paths']['all_static_metadata']}")
     all_static_metadata.to_csv(cf["paths"]["all_static_metadata"],index=False)
 
-
-
-
-
-    print(f"(3/4) Generating a single CSV with all data donation packages.")
-
-    ddp_activities = []
-    if cf["paths"]["ddp"] != "":
-        # load all the data donation packages
-        print(f"   Loading all items from data donation packages...")
-        for u, j, k in walk(cf["paths"]["ddp"]):
-            for g in k:
-                if g.endswith(".json"):
-                    filename = join(u, g)
-                    ddp_activities += [fyp.get_ddp_activities(filename)]
-                    
-        if len(ddp_activities)>0:
-            ddp_activities = pd.concat(ddp_activities)
-    
-            # generate item IDs from the data donation packages
-            ddp_items = []
-            for u in ddp_activities.Link:
-                if isinstance(u,str) and "/video/" in u:
-                    new_item = u.split("/video/")[1]
-                    if new_item[-1] == "/":
-                        new_item = new_item[:-1]
-                    ddp_items.append(int(new_item))
-                else:
-                    ddp_items.append(0)
-            ddp_activities["item_id"] = ddp_items
-            ddp_activities.item_id = ddp_activities.item_id.astype(int)
-            all_static_metadata.item_id = all_static_metadata.item_id.astype(int)
-
-            print(f"   {len(ddp_activities):,} items in the DDP logs.")
-
-            # merge the data donation packages with the static metadata
-            ddp_expanded = pd.merge(left=ddp_activities,
-                                    right=all_static_metadata[["item_id","desc", "author_nickname","author_signature"]],
-                                    on="item_id",
-                                    how="left")
-            
-            # enable the user to drop some data donation packages based on words they don't want to include
-            # NOTE - this is a bit of an experiment. It needs to be developed in a way so that a user can filter out
-            # items locally before they download the package to the research team.
-            check_ddp_cols = ["UserName","SearchTerm","Comment","desc","author_nickname","author_signature"]
-            drop_words = input("   Enter words to drop from data donation packages separated by commas: ")
-            drop_words = drop_words.replace("\n"," ")
-            drop_words_list = list(map(lambda x:x.strip(), drop_words.split(",")))
-            drop_words_list = [w for w in drop_words_list if w != ""]
-
-            # create a DF mask based on if the words are in the data donation packages
-            ok_for_donation = []
-            for _,t in ddp_expanded[["item_id"]+check_ddp_cols].iterrows():
-                w = " ".join([s.replace("\n"," ") for s in t[check_ddp_cols] if isinstance(s,str)]).lower().strip()
-                ok_for_donation += [not any([q.lower() in w for q in drop_words_list])]
-
-            # apply the mask to the data donation packages 
-            print(f"   {sum(ok_for_donation):,} items are ok for donation.")
-            ddp_activities = ddp_activities[ok_for_donation]
-
-            # save the data donation packages
-            print(f"   {len(ddp_activities):,} items in the DDP logs.")
-            print(f"   Saving.")
-            ddp_activities.to_csv(cf["paths"]["data_donations"],index=False)
-    
 
 
 
@@ -221,7 +237,8 @@ def organize_results(verbose=False):
     website_metadata.item_id = website_metadata.item_id.astype(str)
 
     # fix various columns
-    website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(int(x)))
+    if "g_human_count" in website_metadata.columns:
+        website_metadata.g_human_count = website_metadata.g_human_count.map(lambda x: str(int(x)))
     website_metadata["this_video"] = [f"{u:03}/{len(website_metadata):,}" for u in list(range(1,1+len(website_metadata)))]
 
     # format numbers (int)
@@ -273,7 +290,7 @@ def organize_results(verbose=False):
     "playlistId", "isAd", "music_album", "aigcLabelType", "video_downloaded", "audio_extracted", "cover_downloaded", 
     "last_modified", "do_not_modify", "g_music_present", "g_humans_talking"],axis=1,errors="ignore",inplace=True)
 
-    print(f"   Saving website metadata for {len(website_metadata):,} videos as {cf["paths"]["website_metadata"]}\n")
+    print(f"   Saving website metadata for {len(website_metadata):,} videos as {cf['paths']['website_metadata']}\n")
     website_metadata.to_csv(cf["paths"]["website_metadata"],index=False)
 
     print("Done\n"+"*"*80+"\n")

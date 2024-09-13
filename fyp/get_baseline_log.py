@@ -10,7 +10,8 @@ Date:
 import fyp.fyp_main as fyp
 
 
-def get_baseline_log(the_script=None, how_recent=30):
+def get_baseline_log(the_script=None, 
+                     how_recent=30):
     from shutil import move
     from os.path import basename, join, exists
     import subprocess
@@ -22,7 +23,7 @@ def get_baseline_log(the_script=None, how_recent=30):
     print("\n"+"*"*100)
 
     if the_script is None:
-        print(f"No script name provided. Looking for recent zeeschuimer files in {cf["paths"]["firefox_downloads"]}")
+        print(f"No script name provided. Looking for recent zeeschuimer files in {cf['paths']['firefox_downloads']}")
         the_script = "zeeschuimer"
     else:
         if the_script.endswith(".scrpt"):
